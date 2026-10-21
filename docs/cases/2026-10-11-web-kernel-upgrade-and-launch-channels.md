@@ -87,3 +87,27 @@ npm error EBUSY: copyfile '...\libvips-42.dll'
 - [ ] `dsh-doctor.ps1`：可程序判定的现象 —— "web 离线且宿主存活"应为 `WARN` 并指向新启动器；**尚未加入**
 - [ ] 内核升级的**标准流程**（停 → npm --allow-scripts → 插件 → 干跑 → 派生启动）建议固化成脚本，下次一键完成
 - [ ] 登录 token 每次启动都变；已把启动横幅落进 `<workspace>\_web-host.log`，取网址看那里
+
+---
+
+## 症状
+
+计划内升级（不是故障），过程中却遇到：全局 npm 升级报 `EPERM/EBUSY`、install 脚本被跳过导致原生依赖静默损坏
+（`koffi` 报 `Mismatched native Koffi modules`）、升级后插件整棵加载失败。
+
+## 根因
+
+1. 宿主运行中做全局 npm 升级 → 已加载的原生库（如 `libvips-42.dll`）被锁住；
+2. npm 11 默认不跑 install 脚本 → 原生依赖的 JS 与 `.node` 版本不匹配；
+3. 插件是给旧内核编译的，新内核的客户端模块表里没有它依赖的包。
+
+## 处置
+
+停宿主 → `npm i -g --allow-scripts=<需要跑脚本的包> @deepseek-ai/dsh@<ver>` → 升级该 profile 全部插件 →
+`--dump-config` 干跑 → 用脱离沙箱作业的通道（`schtasks`）派生启动。
+
+## 验证
+
+`koffi` / `sharp` / `node-pty` 加载正常（不能只靠"能起来"判断）；`--dump-config` 退出码 0 且插件层齐全；
+`dsh-ops` 这类插件真正生效（工具面出现 `ops_*`）。
+

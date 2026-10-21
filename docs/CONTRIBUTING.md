@@ -50,10 +50,12 @@ cp "$DSH_HOME/dsh-doctor/cases/local-YYYYMMDD-短名.md" docs/cases/
 ## 3. 重建索引
 
 ```bash
-node tools/build-cases.mjs            # 会重写 docs/cases/INDEX.md
+node tools/index-cases.mjs            # 只重建 docs/cases/INDEX.md（不碰正文）
+node tools/lint-cases.mjs             # 与 CI 同一套机械检查，提交前先跑一遍
 ```
 
-> `build-cases.mjs` 的源目录默认是本机 `_ops/incidents`；如果你只是新增一条手工案例，直接在 `INDEX.md` 里加一行也可以（表格三列：编号 / 标题 / 根因摘要）。
+> `tools/build-cases.mjs` 是**一次性 bootstrap**（从本机事故归档生成初始案例库），别用它重建索引，
+> 否则会把手工/PR 加入的案例冲掉。CI（`.github/workflows/case-check.yml`）会替你跑上面两条。
 
 ## 4. 开 PR
 

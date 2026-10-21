@@ -79,3 +79,28 @@ if (-not $wasOnline) { $note = 'OFFLINE_NO_HISTORY (never seen online ... report
 - [ ] `runbook.md`：`#姐妹崩溃` 补一句"`OFFLINE_NO_HISTORY` 可能是状态丢失的假象，先比对同刻日志"
 - [ ] `dsh-doctor.ps1`：可程序判定的现象 —— "同刻日志有 `X: online` 而 state 里 `X.online=false`" → WARN
 - [ ] 守卫本身：状态写入加锁 / 启动时打印"载入了哪些历史"，让重置变得可见
+
+---
+
+## 症状
+
+同一时刻，守卫日志说某位姐妹 `online`，而状态文件里 `online=false` 且被标成 `OFFLINE_NO_HISTORY`（"从未在线过"）。
+后果不是报错，而是**静默放弃救援**：该姐妹离线时不再被边沿触发拉起。
+
+## 根因
+
+状态文件的"在线历史"字段丢失，但 `_scans` 连续增长（每 60 秒 +1、无跳变）说明文件一直在被正常读写、
+没有被清空重建 —— 即**写状态时只写了增量、没写全量**（或旧版本用过不同字段名后又被覆盖）。
+定位停在"机制已知、具体写路径未锁定"（只报告、不处置）。
+
+## 处置
+
+1. 备份状态文件，再补一个显式的 `online=true` 历史（或删掉让守卫重新学习一次）；
+2. 给守卫加自检：同刻日志有 `X: online` 而 state 里 `X.online=false` → 报警；
+3. 状态写入加锁，启动时打印"载入了哪些历史"，让重置变得可见。
+
+## 验证
+
+`_probe\sisters-state.json` 里该姐妹 `online=true`；把它停一次，确认守卫给出 `lastAttempt`（边沿触发）
+而不是 `OFFLINE_NO_HISTORY`；再重启守卫，确认历史被载入而不是从零开始。
+

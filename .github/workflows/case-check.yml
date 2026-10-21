@@ -1,0 +1,35 @@
+name: case-check
+# 病例 PR 的机械检查：格式 / 必备章节 / 指纹泄漏 / 索引一致性。
+# 人只需要审语义（是不是同一个坑、处置对不对），这些交给机器。
+
+on:
+  pull_request:
+    paths:
+      - 'docs/cases/**'
+      - 'tools/lint-cases.mjs'
+      - 'tools/index-cases.mjs'
+      - '.github/workflows/case-check.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: 病例机械检查
+        run: node tools/lint-cases.mjs
+      - name: 索引是否与案例一致（生成后应有 diff 说明手改漏了）
+        run: |
+          cp docs/cases/INDEX.md /tmp/INDEX.before.md
+          node tools/index-cases.mjs
+          if ! diff -q /tmp/INDEX.before.md docs/cases/INDEX.md >/dev/null; then
+            echo "::error::INDEX.md 与案例文件不一致 —— 请先运行 node tools/index-cases.mjs 并提交结果"
+            diff -u /tmp/INDEX.before.md docs/cases/INDEX.md || true
+            exit 1
+          fi
