@@ -43,10 +43,25 @@ test('设置栏字段齐全且都可在线改', () => {
 
 test('contributeGuide 默认值含关键动作（提醒作用）', () => {
     const def = Config.toJSON().dict.contributeGuide.default;
-    for (const word of ['doctor_case_add', 'docs/cases', 'build-cases.mjs', 'PR', 'git pull']) {
+    for (const word of ['doctor_case_add', 'docs/cases', 'index-cases.mjs', 'PR', 'git pull']) {
         assert.ok(def.includes(word), `贡献指引应提到 ${word}`);
     }
     assert.equal(def, CONTRIBUTE_GUIDE);
+});
+
+test('Standard Schema：cordis 靠它校验配置，必须真的可用且填默认值', () => {
+    const std = Config['~standard'];
+    assert.ok(std, '必须暴露 ~standard（否则 cordis 会抛 reading validate）');
+    assert.equal(typeof std.validate, 'function');
+    const result = std.validate({});
+    assert.equal(typeof result, 'object');
+    assert.equal('then' in result, false, '不能是异步校验（cordis 明确拒绝）');
+    assert.equal(result.issues, undefined, '默认值必须合法，不能有 issues');
+    assert.equal(result.value.maxProfiles, 32);
+    assert.equal(result.value.casesPrefer, 'local');
+    assert.equal(result.value.allowLocalCaseWrite, true);
+    // 已给的值必须保留
+    assert.equal(std.validate({ maxProfiles: 7 }).value.maxProfiles, 7);
 });
 
 test('默认值与安全边界', () => {
