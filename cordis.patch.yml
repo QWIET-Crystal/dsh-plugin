@@ -1,0 +1,10 @@
+# dsh-doctor：一个 bundle 层，只做只读体检，不覆盖任何宿主执行器。
+- insert:
+    - id: dsh-doctor
+      name: dsh-doctor
+      config:
+        # 体检范围上限（防止在超大目录上扫到天荒地老）
+        maxProfiles: 32
+        maxLogBytes: 2097152
+        httpTimeoutMs: 1200
+        cacheTtlMs: 15000
