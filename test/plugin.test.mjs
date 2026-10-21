@@ -34,10 +34,10 @@ function fakeCtx() {
     };
 }
 
-test('apply 注册三个工具，且契约字段齐全', () => {
+test('apply 注册四个工具，且契约字段齐全', () => {
     const { ctx, tools, effects } = fakeCtx();
     apply(ctx, {});
-    assert.deepEqual(tools.map((t) => t.name).sort(), ['doctor_cases', 'doctor_check', 'doctor_engines']);
+    assert.deepEqual(tools.map((t) => t.name).sort(), ['doctor_case_add', 'doctor_cases', 'doctor_check', 'doctor_engines']);
     for (const t of tools) {
         assert.equal(typeof t.description, 'string');
         assert.ok(t.description.length > 10);
@@ -52,7 +52,7 @@ test('apply 注册三个工具，且契约字段齐全', () => {
         assert.equal(rendered[0].type, 'text');
         assert.equal(rendered[0].text, 'hello');
     }
-    assert.equal(effects.length, 3, '每个工具都应通过 ctx.effect 注册');
+    assert.equal(effects.length, 4, '每个工具都应通过 ctx.effect 注册');
 });
 
 test('doctor_engines 真跑：能发现本机引擎并渲染成 Markdown', async () => {

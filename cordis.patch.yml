@@ -1,4 +1,4 @@
-# dsh-doctor：一个 bundle 层，只做只读体检，不覆盖任何宿主执行器。
+# dsh-doctor：两个案例库，一个 bundle 层，不覆盖任何宿主执行器。
 - insert:
     - id: dsh-doctor
       name: dsh-doctor
@@ -8,3 +8,9 @@
         maxLogBytes: 2097152
         httpTimeoutMs: 1200
         cacheTtlMs: 15000
+
+        # 案例库：shared = 随包分发（只读）；local = 本机沉淀（唯一可写）
+        # sharedCasesDir: <默认值即包内 docs/cases>
+        # localCasesDir: <默认值 $DSH_HOME/dsh-doctor/cases>
+        casesPrefer: local        # 同名 id 时 local 优先（本地覆盖共享）
+        allowLocalCaseWrite: true # 想彻底只读就设 false

@@ -17,5 +17,6 @@
 | `2026-10-11-plugin-kernel-abi-mismatch` | 内核升级后插件全挂：Failed to load plugins（客户端模块表缺 dsh-client-runtime） | — |
 | `2026-10-11-web-kernel-upgrade-and-launch-channels` | 大姐内核升级 0.1.1-rc.2 → 0.2.0-rc.2（含沙箱外启动通道的摸索） | — |
 | `2026-10-14-web-self-shutdown-by-user` | 大姐按用户要求自我关停（:3080） | — |
+| `2026-10-21-plugin-waits-removed-service` | 插件在等一个已被内核删除的服务（`1 entry did not activate`）· 2026-10-21 | — |
 
-共 11 条。
+共 12 条。

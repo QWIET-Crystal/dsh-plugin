@@ -11,14 +11,16 @@
 | 路径型攻击 | 用 `..` 或符号链接把读取引到白名单外（读 SSH 私钥、读浏览器凭据库） | `realpath` 后比对白名单根；穿越与外部链接一律拒；不存在路径用"最近已存在祖先"判定，仍拒穿越 |
 | 资源耗尽 | 巨大日志文件 / 深目录树 / 慢端口把宿主拖死 | 按字节上限读、profile 数与目录扫描数有上限、端口探测有超时、结果有 TTL 缓存 |
 | 凭据泄漏 | 报告里带出 token、URL 里的 `user:pass@`、本机指纹 | 输出前统一过 `redact()`（`ghp_*`/`github_pat_*`/`sk-*`/`AKIA*`/`Bearer`/`api_key=`/userinfo/主机名/用户名/home/temp） |
+| 污染案例库 | 往本地库塞伪造/带毒病例，让别人的 Agent 读到恶意文本 | 写守卫（id 白名单/`isInside`/强制脱敏/默认不覆盖）；病例文本只作为数据被围栏化读取，**永不执行**；共享库只能经人工 PR 合入 |
 | 提权与持久化 | 插件被当成"能替你执行东西"的后门 | 不 spawn、不写文件、不监听端口、不申请提权；没有可被恶用的动作面 |
 
 ## 结构性保证（不是约定，是设计）
 
 1. **零执行面**：`lib/` 下四个文件都不允许出现 `child_process`、`vm`、`eval(`、`new Function(`。
    单测 `结构性安全：源码里不存在任何执行面` 会逐文件扫描（先剥注释再断言）。
-2. **零写入**：`lib/` 不含 `writeFile` / `appendFile` / `mkdir` / `rm` / `rename`；
-   唯一写操作在 `tools/build-cases.mjs`（构建期工具，不随插件运行）。
+2. **写入范围只有一个**：本地案例库目录（默认 `<DSH_HOME>/dsh-doctor/cases`，可用 `localCasesDir` 指定）。
+   `doctor_case_add` 要过四道守卫：id 不含路径分隔符 → 目标必须落在本地库内（`isInside`）→ 内容强制 `redact()` → 默认不覆盖。
+   设 `allowLocalCaseWrite: false` 即回到完全只读。其余代码路径仍然零写入。
 3. **零监听**：不创建 `net.Server` / `http.Server`；端口只用 `net.connect` 做连通性探测。
 4. **白名单读取**：所有文件访问都经过 `safeReadText(file, { roots })`——
    没有 `roots` 直接拒绝（`no-allowlist`），越界拒绝（`outside-allowlist`），非常规文件拒绝。
