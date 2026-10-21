@@ -120,6 +120,23 @@ test('saveLocalCase：allowLocalCaseWrite=false 时彻底只读', () => {
     }
 });
 
+test('saveLocalCase：本地库目录还不存在时也能首次写入（真机回归）', () => {
+    const root = mkdtempSync(path.join(tmpdir(), 'dsh-doctor-cases-missing-'));
+    try {
+        const home = path.join(root, 'home');
+        mkdirSync(home, { recursive: true });
+        const pkg = path.join(root, 'pkg');
+        mkdirSync(path.join(pkg, 'docs', 'cases'), { recursive: true });
+        const s = resolveCaseSources({}, { DSH_HOME: home }, pkg);
+        assert.equal(existsSync(s.local), false, '前置：本地库目录应不存在');
+        const r = saveLocalCase(s, { id: 'first', title: 't', body: 'b' }, { identity: IDENT });
+        assert.equal(r.ok, true, JSON.stringify(r));
+        assert.equal(existsSync(path.join(s.local, 'first.md')), true);
+    } finally {
+        rmSync(root, { recursive: true, force: true });
+    }
+});
+
 test('renderCaseIndex：两个库都出现，并说明覆盖规则', () => {
     const { root, pkgRoot, home } = fixture();
     try {
