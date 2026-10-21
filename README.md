@@ -39,6 +39,25 @@ dsh plugin add "link:/path/to/dsh-doctor"
 
 参数都很小：`refresh`（跳过缓存）、`deep`（是否扫日志）、`id`（案例编号）。
 
+## 设置栏（DSH 设置页里自动出现一栏）
+
+插件导出 `Config`（schemastery schema）后，DSH 的设置页会自动生成 **dsh-doctor** 一栏 —— 字段都带 `.volatile()`，可在线改：
+
+| 字段 | 默认 | 作用 |
+| --- | --- | --- |
+| `maxProfiles` | 32 | 扫描 `DSH_HOME` 下最多多少个 profile |
+| `maxLogBytes` | 2 MiB | 单个日志文件读取上限（超限标注 `truncated`） |
+| `httpTimeoutMs` | 1200 | 端口连通性探测超时 |
+| `cacheTtlMs` | 15000 | 发现结果缓存（0 = 每次重扫） |
+| `casesPrefer` | `local` | 同名案例 id 优先读哪个库 |
+| `localCasesDir` | `$DSH_HOME/dsh-doctor/cases` | 本地案例库目录 |
+| `sharedCasesDir` | 包内 `docs/cases` | 共享案例库目录；可指向你 clone 的仓库，`git pull` 即更新 |
+| `allowLocalCaseWrite` | `true` | 设 `false` 回到完全只读 |
+| `contributeGuide` | 四步流程 | **提醒用**：`doctor_case_add` → 复制进 `docs/cases/` → 重建索引 → 开 PR；合并后别人 `git pull` |
+
+> schemastery 在不同 DSH 版本里可能叫 `schemastery` 或 `@deepseek-ai/schemastery`，插件运行期解析；
+> 解析不到时 `Config` 为 `undefined` —— 插件照常工作，只是没有设置栏（优雅降级）。
+
 ## 安全模型（详见 [SECURITY.md](SECURITY.md)）
 
 - **零执行面**：不 import `child_process` / `vm`，不用 `eval` / `new Function`；单测里有一条**静态断言**守着这条规矩。
@@ -96,3 +115,5 @@ node test/safety.test.mjs    # 在沙箱/受限环境里直接跑（测试运行
 ## 许可
 
 MIT © 2026 QWIET-Crystal
+
+贡献共享案例库的完整流程见 [docs/CONTRIBUTING.md](docs/CONTRIBUTING.md)。
