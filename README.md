@@ -82,11 +82,18 @@ dsh plugin add "link:/path/to/dsh-doctor"
 - **写入**只允许本地库，且要过四道守卫：id 不含路径分隔符 → 目标必须落在本地库内 → 内容强制 `redact()` → 默认不覆盖（`force=true` 才覆盖）。
 - `allowLocalCaseWrite: false` 可彻底关掉写入，回到纯只读。
 
-**怎么把本地病例贡献给共享库**（人工审阅，不自动回传）：`doctor_case_add` 生成的文件 → 复制进仓库 `docs/cases/` → 跑 `node tools/build-cases.mjs` 重建索引（或手工加一行）→ 开 PR。上游合并后，其他人 `git pull` 就能拿到。
+**怎么把本地病例贡献给共享库**（人工审阅，不自动回传）：
+
+```bash
+doctor_case_add → 复制进 docs/cases/ → node tools/index-cases.mjs → node tools/lint-cases.mjs → 开 PR
+```
+
+CI（`.github/workflows/case-check.yml`）会在 PR 上跑机械检查（文件名 / 必备章节 / 指纹泄漏 / 索引一致性），
+维护者只需审语义 —— 贡献者看 [docs/CONTRIBUTING.md](docs/CONTRIBUTING.md)，维护者看 [docs/REVIEWING.md](docs/REVIEWING.md)（review → 合并 → 发版）。
 
 ## 共享库的来源
 
-`docs/cases/` 最初是从本机 11 次真实事故**机械脱敏**生成的（路径/主机名/用户名/令牌已替换），后续由 PR 增长：
+`docs/cases/` 最初是从本机 12 次真实事故**机械脱敏**生成的（路径/主机名/用户名/令牌已替换），后续由 PR 增长：
 
 - 审批提示孤儿化、测试作业死锁、前端进程死亡、渲染层失控、GPU 崩溃回退软渲染
 - 守护从沙箱内启动被回收、守护状态被重置
