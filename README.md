@@ -55,6 +55,8 @@ dsh plugin add "link:/path/to/dsh-doctor"
 | `allowLocalCaseWrite` | `true` | 设 `false` 回到完全只读 |
 | `contributeGuide` | 四步流程 | **提醒用**：`doctor_case_add` → 复制进 `docs/cases/` → 重建索引 → 开 PR；合并后别人 `git pull` |
 
+> 设置栏里的**显示名**由 `cordis.patch.yml` 的 `label` 决定 —— 本项目设为 **贡献病例**（客户端读 `entry.options.label`；宿主版本不认 `label` 时会回退显示条目 id `dsh-doctor`）。
+
 > schemastery 在不同 DSH 版本里可能叫 `schemastery` 或 `@deepseek-ai/schemastery`，插件运行期解析；
 > 解析不到时 `Config` 为 `undefined` —— 插件照常工作，只是没有设置栏（优雅降级）。
 

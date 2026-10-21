@@ -59,6 +59,15 @@ Get-PSDrive -PSProvider FileSystem  ->  C FreeGB 0 ; D FreeGB 0      （假）
 （当次 Start-Process 反复启动后 Get-Process 'DSH Desktop' 为空）
 ```
 
+## 判定签名
+
+**安装器说成功，但文件没换**。判据：
+
+1. 安装器（NSIS 静默）**退出码 0**，但可执行文件 `FileVersion` **仍是旧版本**；
+2. 目标目录 ACL 只给 `BUILTIN\Users:(OI)(CI)(RX)`（写要 Administrators），而进程没提权；
+3. 注册表 `HKCU` 里版本号已更新（安装器只能写这里）—— 于是"版本看起来升了、实际没升"；
+4. 启动失败的旁证：从代理会话里 `Start-Process` 拉起的 GUI 一闪就没（随沙箱作业被回收）。
+
 ## 根因
 
 1. **安装失败＝未提权**：`D:\` 根 ACL 只给 `BUILTIN\Users` 读/执行，写要 Administrators。安装器只能写 HKCU 注册表，1.1GB 文件一个都拷不进，而 NSIS 在静默模式下**不把拷贝失败反映成退出码**。

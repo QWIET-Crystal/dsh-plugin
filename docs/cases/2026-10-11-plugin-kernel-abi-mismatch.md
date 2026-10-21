@@ -16,6 +16,14 @@ client-modules: require("@deepseek-ai/dsh-client-runtime/client") missed the mod
 (a build-time externals drift, or a dynamic dependency that did not arrive)
 ```
 
+## 判定签名
+
+界面上弹 **`Failed to load plugins`**，插件全不可用。判据：
+
+1. 日志点名某个插件，并伴随 `Cannot find module '@deepseek-ai/dsh-client-runtime/client'` 这类模块缺失；
+2. 到新内核里搜该包：289 个 `@deepseek-ai` 包里**根本没有它**（该包在内核 0.1.2-alpha 就被上游移除）；
+3. 被禁用的插件都是**旧内核时代**的版本（客户端 chunk 还在 require 已删除的包）。
+
 ## 根因（已验证）
 
 二姐的 profile 是**给内核 0.1.x 解析**的，她的插件全部是那个年代的版本，客户端 chunk 会 require

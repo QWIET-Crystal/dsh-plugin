@@ -95,6 +95,14 @@ npm error EBUSY: copyfile '...\libvips-42.dll'
 计划内升级（不是故障），过程中却遇到：全局 npm 升级报 `EPERM/EBUSY`、install 脚本被跳过导致原生依赖静默损坏
 （`koffi` 报 `Mismatched native Koffi modules`）、升级后插件整棵加载失败。
 
+## 判定签名
+
+计划内升级过程中，三种"只有动手才会遇到"的判据：
+
+1. 全局 npm 升级报 `EPERM` / `EBUSY`，且被锁的是已加载的原生库（如 `libvips-42.dll`）→ 宿主没停；
+2. 原生依赖报 `Mismatched native Koffi modules`（`koffi`）→ install 脚本被跳过，JS 与 `.node` 版本不匹配；
+3. 升级后 `--dump-config` 里插件层缺项（`Failed to load plugins` 的前兆）→ 插件要跟着升。
+
 ## 根因
 
 1. 宿主运行中做全局 npm 升级 → 已加载的原生库（如 `libvips-42.dll`）被锁住；

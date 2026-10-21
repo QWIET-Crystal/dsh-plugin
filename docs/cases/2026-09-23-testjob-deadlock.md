@@ -48,6 +48,15 @@ TCP    127.0.0.1:11870        0.0.0.0:0    LISTENING    21324
 [19:08:19] REAPED worker pid=21364 flat=186s lonely_ports=3129 ws=45.6MB
 ```
 
+## 判定签名
+
+作业**永远不结算**：`job_output` 反复返回 `running`，几十分钟没有任何新输出。判据：
+
+1. 该作业的进程 CPU 接近 0（卡在未能退出的 worker，而不是在算）；
+2. 复看启动命令：**缺 `--test-timeout`**；
+3. 旁证（有欺骗性）：命令里带 `2>&1 | Select-Object -Last 25` 这类全量缓冲 —— 于是"没有输出"既可能是死锁、也可能只是被缓冲，
+   这一条会让人误判成"还在跑"。
+
 ## 根因
 
 命令缺 `--test-timeout`。worker 卡死后 `node --test` 无限等待，作业永不结算，agent 的 `job_output` 轮询也就永远返回 `running`。
