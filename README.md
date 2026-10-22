@@ -21,21 +21,37 @@ npm 全局内核、桌面端内置内核、若干 `DSH_HOME`（用户目录的 `
 
 ```bash
 # 作为 DSH 插件（bundle）
-dsh plugin add dsh-doctor
-# 或本地开发目录
-dsh plugin add "link:/path/to/dsh-doctor"
+dsh plugin --profile <name> add @qweit-crystal/dsh-doctor
+
+# 或从 GitHub 直装（最新 main）
+dsh plugin --profile <name> add github:QWIET-Crystal/dsh-plugin
+
+# 或本地开发目录（改代码即时生效，配合宿主 HMR）
+dsh plugin --profile <name> add "link:/path/to/dsh-plugin"
 ```
 
+> ⚠️ **包名**：npm 上的裸名 `dsh-doctor` 属于**另一个无关项目**（astra3294，0.4.3），请务必用 scoped 全名
+> `@qweit-crystal/dsh-doctor`；只写 `dsh-doctor` 会装到别人的包。
+
 插件自动插入一行 `dsh-doctor`（见 `cordis.patch.yml`），无需手工改装配。
+
+### 支持范围（实测）
+
+| 项目 | 实测 |
+| --- | --- |
+| DSH 内核 | **0.2.1-rc.2**（桌面端 2.0.18 内置内核；全局 npm 内核同版本） |
+| Node | >= 22.19.0（实测 24.20.0） |
+| 其它内核版本 | **宽松 peer + 运行期降级**：解析不到宿主包时退化为"无设置页 / 最小形状工具 / CLI 照常"，不崩 |
 
 ## 提供的工具
 
 | 工具 | 作用 |
 | --- | --- |
 | `doctor_engines` | 列出所有引擎/实例：每个 `DSH_HOME`、每个 profile 的 bundles/依赖/声明端口、npm 全局内核与桌面端版本、正在监听的端口（带常见端口标签） |
-| `doctor_check` | 分层体检：端口、profile 装配、桌面端日志签名；输出带"对策库 #章节"指针的报告，日志行**先脱敏再围栏化** |
+| `doctor_check` | 分层体检：端口、profile 装配、桌面端日志签名（默认扫日志）；输出带"对策库 #章节"指针的报告，日志行**先脱敏再围栏化** |
 | `doctor_cases` | 读**两个**案例库：共享库（随包、只读）+ 本地库（本机沉淀、可写）；不带参数列索引，带 `id` 读单条并标注来源 |
 | `doctor_case_add` | 把这次遇到的故障写进**本地**案例库（唯一写操作：只写本地库目录、强制脱敏、默认不覆盖） |
+| `doctor_contribute` | 写本地草稿并给出**一条**上传命令（见"一键贡献"，标注 experimental） |
 
 参数都很小：`refresh`（跳过缓存）、`deep`（是否扫日志）、`id`（案例编号）。
 
@@ -121,7 +137,10 @@ node test/safety.test.mjs    # 在沙箱/受限环境里直接跑（测试运行
 - 桌面端日志扫描是**能力探测**：没有桌面端时该层自动跳过并给出 info，不会报错。
 - 端口探测是纯 TCP 连通性；HTTP 语义（鉴权、401/403）刻意不做，避免把"要鉴权"误判成"挂了"。
 
-## 一键贡献（一条命令）
+## 一键贡献（一条命令）｜ experimental
+
+> 标记 **experimental**：它要跑 `git` / `gh`，前提是"仓库已 clone、`gh` 已登录、默认分支叫 main"。
+> 环境不满足时它会明确报错而不是静默失败；不急用的用户可以只用 `doctor_cases` 读案例。
 
 ```bash
 # 1) 让 Agent 调用 doctor_contribute → 写入本地库（已脱敏），回执里直接给出下面这条命令

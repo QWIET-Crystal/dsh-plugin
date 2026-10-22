@@ -21,6 +21,7 @@ import path from 'node:path';
 import { listCases, readCase, renderCaseIndex, resolveCaseSources } from '../lib/cases.js';
 import { discover } from '../lib/detect.js';
 import { collectFindings, renderEngines, renderReport, scanDesktopLogs } from '../lib/report.js';
+import { hostToolsOrigin } from '../lib/index.js';
 import { localIdentity, redact } from '../lib/safety.js';
 
 const PACKAGE_ROOT = path.join(import.meta.dirname, '..');
@@ -42,7 +43,8 @@ async function main() {
                 'dsh-doctor —— 脱离宿主的离线体检与案例库工具',
                 '',
                 '  dsh-doctor engines [--json]           发现本机所有 DSH 引擎/实例/profile',
-                '  dsh-doctor check   [--json] [--deep]  分层体检（端口 / profile 装配 / 桌面端日志）',
+                '  dsh-doctor check   [--json] [--no-deep]  分层体检（默认扫日志；--no-deep 跳过）',
+                '  dsh-doctor where   [--json]           宿主包解析到哪一份（工具没反应时先看它）',
                 '  dsh-doctor cases   [id] [--json]      两库索引；给 id 则读单条',
                 '  dsh-doctor contribute --from <file> [--pr] [--dry-run]',
                 '',
@@ -64,7 +66,11 @@ async function main() {
 
     if (cmd === 'check') {
         const d = await discover({});
-        const logScan = flags.has('--deep') === false ? { hits: [], scanned: [], warnings: ['已跳过日志扫描（--deep 关闭）'] } : scanDesktopLogs(process.env, { maxLogBytes: 2 * 1024 * 1024, httpTimeoutMs: 1200 });
+        // 默认扫日志：空绿比报错更危险（--no-deep 才跳过）
+        const deep = !flags.has('--no-deep');
+        const logScan = deep
+            ? scanDesktopLogs(process.env, { maxLogBytes: 2 * 1024 * 1024, httpTimeoutMs: 1200 })
+            : { hits: [], scanned: [], warnings: ['已跳过日志扫描（--no-deep）'] };
         const findings = collectFindings(d, logScan);
         if (json) {
             out({ findings, scanned: logScan.scanned });
@@ -93,6 +99,14 @@ async function main() {
         if (json) out({ source: hit.source, dir: redact(hit.dir, identity), text: hit.text });
         else console.log(`> 来源：${hit.source === 'local' ? '本地库' : '共享库'}\n\n` + redact(hit.text, identity));
         return 0;
+    }
+
+    if (cmd === 'where') {
+        // 漂移排查：宿主包到底解析到哪一份（陌生人报"工具没反应"时先看这个）
+        const origin = hostToolsOrigin;
+        if (json) out({ hostTools: origin || null });
+        else console.log(origin ? `@deepseek-ai/dsh-tools ← ${origin}` : '@deepseek-ai/dsh-tools 未解析到（工具将以最小形状注册）');
+        return origin ? 0 : 1;
     }
 
     if (cmd === 'contribute') {

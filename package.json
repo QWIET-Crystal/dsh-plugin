@@ -21,6 +21,14 @@
     "health",
     "observability"
   ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/QWIET-Crystal/dsh-plugin.git"
+  },
+  "homepage": "https://github.com/QWIET-Crystal/dsh-plugin#readme",
+  "bugs": {
+    "url": "https://github.com/QWIET-Crystal/dsh-plugin/issues"
+  },
   "engines": {
     "node": ">=22.19.0"
   },

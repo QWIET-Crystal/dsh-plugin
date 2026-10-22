@@ -25,3 +25,10 @@
 - `lib/` 零执行面（无 `child_process` / `vm` / `eval` / `new Function`），由静态断言守着。
 - 读取白名单 + 有界读取 + 输出脱敏 + 反注入围栏（日志内容无法逃出代码围栏）。
 - 唯一写点是本地案例库；`allowLocalCaseWrite: false` 可回到完全只读。
+
+### 修复（发布前审查，2026-10-22 下午）
+
+- `dsh-doctor check` 默认**空绿**：CLI 与插件工具的 `deep` 默认值不一致，且端口层只查 profile 声明（当前 profile 都没声明）。改为默认扫日志（`--no-deep` 跳过）、报告区分「已扫描 N 个文件」与「未扫描（原因）」、端口层补「在听但未声明」的信息项并展示 warnings。
+- 宿主包解析链补 `process.argv[1]` 祖先链：web 宿主从 `<内核>/lib/bin.js` 启动，`@deepseek-ai/dsh-tools` 在内核嵌套 `node_modules` 里；之前只能退化兜底。新增 `dsh-doctor where` 自检。
+- 包名澄清：npm 裸名 `dsh-doctor` 已被他人占用（astra3294，0.4.3），统一改用 `@qweit-crystal/dsh-doctor`。
+- 补 `repository` / `homepage` / `bugs` 与 `publish.yml`（`v*` tag 触发、CI 全绿、`NPM_TOKEN` 齐备才发）；一键贡献标记 experimental。

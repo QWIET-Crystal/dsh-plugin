@@ -1,0 +1,72 @@
+name: publish
+
+# 发布纪律：**打 tag = 发版**。
+#   git tag -a v0.1.1 -m "v0.1.1" && git push origin v0.1.1
+# 只有 v* tag 且 CI 全绿时才会发布；也支持手动触发（workflow_dispatch，仅做构建与 dry-run）。
+#
+# 需要仓库 secret：NPM_TOKEN（npmjs.com 的 Automation token，仅供 @qweit-crystal 这个 scope）。
+# 没配 token 时 job 会在"检查 secret"一步失败并给出明确提示，不会静默跳过。
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: '只打包，不发布'
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: 全量测试
+        run: |
+          set -e
+          for f in test/*.test.mjs; do
+            echo "== $f"
+            node "$f"
+          done
+      - name: 病例库机械检查
+        run: node tools/lint-cases.mjs
+      - name: 索引一致性
+        run: |
+          cp docs/cases/INDEX.md /tmp/INDEX.before.md
+          node tools/index-cases.mjs
+          diff -q /tmp/INDEX.before.md docs/cases/INDEX.md
+
+  publish:
+    needs: verify
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          registry-url: 'https://registry.npmjs.org'
+      - name: 检查发布前提（包名/版本/secret）
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          set -e
+          node -e "const p=require('./package.json'); console.log('包名:', p.name, '版本:', p.version); if(!p.name.startsWith('@')) { console.error('::error::裸名已被他人占用（npm 上 dsh-doctor 属于另一个项目），请使用 scoped 名'); process.exit(1) } if(!p.repository) { console.error('::error::package.json 缺 repository 字段'); process.exit(1) }"
+          if [ -z "${NODE_AUTH_TOKEN}" ]; then
+            echo "::error::缺少 NPM_TOKEN secret —— 在仓库 Settings → Secrets 里添加后重跑"
+            exit 1
+          fi
+      - name: 打包（看内容是否符合预期）
+        run: npm pack --dry-run
+      - name: 发布
+        if: github.event_name == 'push' || inputs.dry_run == false
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm publish --access public --provenance
