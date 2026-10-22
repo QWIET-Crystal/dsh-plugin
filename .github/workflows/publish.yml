@@ -47,6 +47,10 @@ jobs:
   publish:
     needs: verify
     runs-on: ubuntu-latest
+    # --provenance 需要 OIDC 写权限（缺了会直接发布失败）
+    permissions:
+      contents: read
+      id-token: write
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
