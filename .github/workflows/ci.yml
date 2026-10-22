@@ -1,0 +1,39 @@
+name: ci
+
+# 每次 push / PR 都跑：单元与契约测试 + 病例库机械检查。
+# 与 case-check.yml 的区别：那个只在病例 PR 上跑，这个覆盖代码改动。
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: 测试（逐文件跑，避开测试运行器 spawn 限制）
+        run: |
+          set -e
+          for f in test/*.test.mjs; do
+            echo "== $f"
+            node "$f"
+          done
+      - name: 病例库机械检查
+        run: node tools/lint-cases.mjs
+      - name: 索引一致性
+        run: |
+          cp docs/cases/INDEX.md /tmp/INDEX.before.md
+          node tools/index-cases.mjs
+          diff -q /tmp/INDEX.before.md docs/cases/INDEX.md || {
+            echo "::error::INDEX.md 与案例文件不一致 —— 运行 node tools/index-cases.mjs 后提交"
+            exit 1
+          }

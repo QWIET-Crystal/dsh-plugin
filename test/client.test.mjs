@@ -88,7 +88,7 @@ test('注册：往 settings.section 挂一页「贡献病例」', () => {
     const tree = component({});
     assert.equal(tree.type, 'div');
     const text = JSON.stringify(tree);
-    for (const word of ['贡献病例', 'doctor_case_add', 'index-cases.mjs', 'docs/cases']) {
+    for (const word of ['贡献病例', 'doctor_contribute', 'contribute.mjs', '--pr']) {
         assert.ok(text.includes(word), `页面内容应提到 ${word}`);
     }
 });

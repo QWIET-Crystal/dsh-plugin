@@ -121,8 +121,48 @@ node test/safety.test.mjs    # 在沙箱/受限环境里直接跑（测试运行
 - 桌面端日志扫描是**能力探测**：没有桌面端时该层自动跳过并给出 info，不会报错。
 - 端口探测是纯 TCP 连通性；HTTP 语义（鉴权、401/403）刻意不做，避免把"要鉴权"误判成"挂了"。
 
+## 一键贡献（一条命令）
+
+```bash
+# 1) 让 Agent 调用 doctor_contribute → 写入本地库（已脱敏），回执里直接给出下面这条命令
+# 2) 在仓库目录执行：
+node tools/contribute.mjs --from "<本地库>/<病例>.md" --pr
+```
+
+它依次完成：**脱敏 → 写进 docs/cases/ → 重建索引 → 机械检查 → 建分支 `case/<id>` → 推送 → `gh pr create`**。
+只想演算：`--dry-run`；只提交不推：`--no-push`；换仓库位置：`--repo <目录>`；覆盖同名：`--force`。
+
+### 离线 CLI（DSH 挂了也能用）
+
+```bash
+dsh-doctor engines        # 本机所有引擎/实例（home/profile/npm/桌面端）
+dsh-doctor check          # 分层体检；退出码 0 全绿 / 1 注意 / 2 故障
+dsh-doctor cases [id]     # 两库索引 / 读单条
+dsh-doctor contribute --from <file> --pr
+```
+
+## 与同类工具的关系（2026-10-22 对比过）
+
+| | 本项目 | [jorinyang/dsh-doctor](https://github.com/jorinyang/dsh-doctor) | [PerryLink/dsh-plugin-doctor](https://github.com/PerryLink/dsh-plugin-doctor) |
+| --- | --- | --- | --- |
+| 定位 | 运行期健康体检 + 案例库 | 诊断 + 修复 + 回滚 + 运行时自愈 | 插件发布前的核验标准 |
+| 多引擎发现 | ✅ 所有 DSH_HOME / profile / npm / 桌面端 | ❌ 单一环境 | ❌ 面向单个插件包 |
+| 案例库 | ✅ 本地+共享两库、脱敏、linter、CI | ❌ | ❌ |
+| 修复能力 | ❌（只读） | ✅ journal + LIFO 回滚 | ❌ |
+| 离线入口 | ✅ `bin/dsh-doctor.mjs` | ✅ CLI（postinstall 装到全局 PATH） | ✅ bin CLI |
+| 测试 | ✅ 30+ 项（安全 / 契约 / 客户端） | ❌ 无 | ✅ `tests/*.mjs` |
+| 供应链门禁 | CI + 零执行面静态断言 | ⚠️ postinstall 会 `execSync` 并写全局 bin | ✅ Scorecard / actions / dependabot |
+| 运行时依赖 | 零（客户端只 `require('react')`） | 零 | 零 |
+
+**已吸取并落地的经验**：
+
+1. **离线入口**（jorinyang）—— 插件活在宿主里，宿主挂了就等于没有插件；`bin/dsh-doctor.mjs` 只要有 Node 就能体检。
+2. **门禁前移**（PerryLink）—— 新增 `.github/workflows/ci.yml`：每次 push/PR 跑全部测试 + 病例 lint + 索引一致性。
+3. **包名与安装渠道写清楚**（PerryLink）—— 避免用户装到同名的无关包。
+4. **刻意不学**：postinstall 改全局 PATH（安装即执行属于供应链面）；也不做自动修复（会破坏"零执行面"承诺，列 roadmap 另议）。
+
 ## 许可
 
 MIT © 2026 QWIET-Crystal
 
-贡献共享案例库的完整流程见 [docs/CONTRIBUTING.md](docs/CONTRIBUTING.md)。
+贡献共享案例库的完整流程见 [docs/CONTRIBUTING.md](docs/CONTRIBUTING.md)（维护者看 [docs/REVIEWING.md](docs/REVIEWING.md)），变更记录见 [CHANGELOG.md](CHANGELOG.md)。

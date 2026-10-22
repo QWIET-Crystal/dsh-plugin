@@ -4,6 +4,9 @@
   "description": "跨引擎 DSH 体检插件：自动发现本机所有 DeepSeek Harness 引擎/实例与 profile，分层体检（进程/端口/HTTP/插件/日志），附脱敏案例库，并在设置面板左栏提供「贡献病例」页。只读、不执行任何子进程。",
   "type": "module",
   "main": "lib/index.js",
+  "bin": {
+    "dsh-doctor": "./bin/dsh-doctor.mjs"
+  },
   "exports": {
     ".": "./lib/index.js",
     "./client": "./lib/client.js",
@@ -23,6 +26,8 @@
   },
   "files": [
     "lib",
+    "bin",
+    "tools",
     "docs",
     "cordis.patch.yml",
     "README.md",
