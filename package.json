@@ -1,41 +1,53 @@
 {
-    "name":  "dsh-doctor",
-    "version":  "0.1.0",
-    "description":  "跨引擎 DSH 体检插件：自动发现本机所有 DeepSeek Harness 引擎/实例与 profile，分层体检（进程/端口/HTTP/插件/日志），附脱敏案例库。只读、不执行任何子进程。",
-    "type":  "module",
-    "main":  "lib/index.js",
-    "license":  "MIT",
-    "keywords":  [
-                     "dsh",
-                     "dsh-plugin",
-                     "deepseek-harness",
-                     "diagnostics",
-                     "health",
-                     "observability"
-                 ],
-    "engines":  {
-                    "node":  "\u003e=22.19.0"
-                },
-    "files":  [
-                  "lib",
-                  "docs",
-                  "cordis.patch.yml",
-                  "README.md",
-                  "SECURITY.md",
-                  "LICENSE"
-              ],
-    "scripts":  {
-                    "test":  "node --test test/",
-                    "prepublishOnly":  "node --test test/",
-                    "cases:lint":  "node tools/lint-cases.mjs",
-                    "cases:index":  "node tools/index-cases.mjs"
-                },
-    "peerDependencies":  {
-                             "@deepseek-ai/dsh-tools":  "\u003e=0.2.0-rc.2 \u003c0.3.0-0"
-                         },
-    "dsh":  {
-                "bundle":  {
-                               "patch":  "./cordis.patch.yml"
-                           }
-            }
+  "name": "dsh-doctor",
+  "version": "0.1.0",
+  "description": "跨引擎 DSH 体检插件：自动发现本机所有 DeepSeek Harness 引擎/实例与 profile，分层体检（进程/端口/HTTP/插件/日志），附脱敏案例库，并在设置面板左栏提供「贡献病例」页。只读、不执行任何子进程。",
+  "type": "module",
+  "main": "lib/index.js",
+  "exports": {
+    ".": "./lib/index.js",
+    "./client": "./lib/client.js",
+    "./package.json": "./package.json"
+  },
+  "license": "MIT",
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "deepseek-harness",
+    "diagnostics",
+    "health",
+    "observability"
+  ],
+  "engines": {
+    "node": ">=22.19.0"
+  },
+  "files": [
+    "lib",
+    "docs",
+    "cordis.patch.yml",
+    "README.md",
+    "SECURITY.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "test": "node --test test/",
+    "prepublishOnly": "node --test test/",
+    "cases:lint": "node tools/lint-cases.mjs",
+    "cases:index": "node tools/index-cases.mjs"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/dsh-tools": ">=0.2.0-rc.2 <0.3.0-0"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "immediately": true,
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-slots"
+      ]
+    }
+  }
 }
