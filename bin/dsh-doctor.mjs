@@ -61,6 +61,7 @@ async function main() {
                 '  dsh-doctor check   [--json] [--no-deep] [--no-save] [--html <file>] [--quiet]',
                 '                                          分层体检（--html 出自包含报告；--quiet 只留退出码）',
                 '  dsh-doctor fix     [--json]             只输出「照抄即可」的修理清单（不执行任何东西）',
+                '  dsh-doctor plan    [--json]             输出「修复计划」（动作清单，供急救包执行；本命令不动手）',
                 '  dsh-doctor kit     --to <目录>          导出急救包（双击即用，含 .cmd/.ps1 与内置副本）',
                 '  dsh-doctor runs    [name] [--json]      体检历史：不带 name 列清单，给 name 读单条',
                 '  dsh-doctor where   [--json]             宿主包解析到哪一份（工具没反应时先看它）',
@@ -95,6 +96,8 @@ async function main() {
             env: process.env,
             deep: !flags.has('--no-deep'),
             saveRuns: !flags.has('--no-save'),
+            sessionScan: !flags.has('--no-sessions'),
+            deepSessions: flags.has('--deep-sessions'),
             retention: 30,
             throttleMs: 15000,
         });
@@ -109,12 +112,33 @@ async function main() {
         return payload.exitCode;
     }
 
+    if (cmd === 'plan') {
+        // 只产出"动作清单"，不执行：执行器在急救包里（插件与 CLI 都保持零执行面）
+        const payload = await runCheck({
+            env: process.env,
+            deep: !flags.has('--no-deep'),
+            saveRuns: false,
+            sessionScan: !flags.has('--no-sessions'),
+            deepSessions: flags.has('--deep-sessions'),
+        });
+        const { buildRepairPlan, collectPatchFiles, renderRepairPlan } = await import('../lib/repairs.js');
+        const plan = buildRepairPlan(payload, { patchFiles: collectPatchFiles(payload.discovery) });
+        if (json) {
+            out({ ok: true, verdict: payload.verdict, plan });
+            return 0;
+        }
+        console.log(renderRepairPlan(plan));
+        return 0;
+    }
+
     if (cmd === 'fix') {
         // 只列"照抄即可"的命令，**不执行**：执行属于急救包的职责（插件保持零执行面）
         const payload = await runCheck({
             env: process.env,
             deep: !flags.has('--no-deep'),
             saveRuns: !flags.has('--no-save'),
+            sessionScan: !flags.has('--no-sessions'),
+            deepSessions: flags.has('--deep-sessions'),
             retention: 30,
             throttleMs: 15000,
         });

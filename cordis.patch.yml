@@ -28,3 +28,7 @@
 
         # 会话界面右上角的「体检」小徽章（有问题时变色；设 false 隐藏）
         headerBadge: true
+
+        # 会话层检查（0.5.0）：只读最近一个会话的尾部，统计"空回合/重复坍缩"，不输出正文
+        sessionScan: true
+        deepSessions: false       # true = 扫最近 24h 内所有会话（每个尾部 2MB），更慢

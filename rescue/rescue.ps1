@@ -297,6 +297,247 @@ function Start-DesktopApp {
     }
 }
 
+
+# ---------------------------------------------------------------- 一键修复（0.5.0）
+# 施工纪律：**动作清单是数据，执行器只认枚举类型**。
+# 每个动作固定四步：备份 -> 执行 -> 验证 -> 记日志；任何一步失败都不继续。
+
+$repairBackupRoot = Join-Path $here 'backups'
+
+function Test-PortListening {
+    param([int]$Port, [int]$TimeoutMs = 800)
+    try {
+        $client = New-Object System.Net.Sockets.TcpClient
+        $task = $client.ConnectAsync('127.0.0.1', $Port)
+        $ok = $task.Wait($TimeoutMs) -and $client.Connected
+        $client.Close()
+        return $ok
+    } catch {
+        return $false
+    }
+}
+
+function Wait-PortListening {
+    param([int]$Port, [int]$TimeoutSec = 30)
+    $deadline = (Get-Date).AddSeconds($TimeoutSec)
+    while ((Get-Date) -lt $deadline) {
+        if (Test-PortListening -Port $Port) { return $true }
+        Start-Sleep -Milliseconds 700
+    }
+    return $false
+}
+
+function Get-BuiltinPlan {
+    # 没有 Node 时也能救：只做 A 类里最确定的两件事
+    $actions = @()
+    if (-not (Test-PortListening -Port 3080)) {
+        $actions += [pscustomobject]@{ id = 'web'; type = 'start-service'; risk = 'A'; title = '启动网页端（:3080）'; why = '内置计划：端口没在监听'; params = [pscustomobject]@{ service = 'web' }; verify = [pscustomobject]@{ kind = 'port'; port = 3080 } }
+    }
+    $desk = Find-DesktopExe
+    if ($desk -and -not (Test-PortListening -Port 43120)) {
+        $actions += [pscustomobject]@{ id = 'desktop'; type = 'start-service'; risk = 'A'; title = '启动桌面端（:43120）'; why = '内置计划：端口没在监听'; params = [pscustomobject]@{ service = 'desktop' }; verify = [pscustomobject]@{ kind = 'port'; port = 43120 } }
+    }
+    return [pscustomobject]@{ actions = $actions; notes = @(); summary = [pscustomobject]@{ total = $actions.Count; A = $actions.Count; B = 0; notes = 0 } }
+}
+
+function Get-Plan {
+    if (-not $node -or -not $pluginRoot) {
+        Write-Log '没有 Node/插件代码 -> 用内置最小计划（只做 A 类启动）'
+        return Get-BuiltinPlan
+    }
+    $entry = Join-Path $pluginRoot 'bin\dsh-doctor.mjs'
+    $prevEnc = $null
+    $raw = $null
+    try {
+        try { $prevEnc = [Console]::OutputEncoding; [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch { }
+        $raw = & $node $entry plan --json 2>&1
+    } catch {
+        Write-Log "生成修复计划失败：$($_.Exception.Message)"
+        return $null
+    } finally {
+        if ($prevEnc) { try { [Console]::OutputEncoding = $prevEnc } catch { } }
+    }
+    $text = ($raw | Out-String).Trim()
+    try {
+        $obj = $text | ConvertFrom-Json
+        return $obj.plan
+    } catch {
+        Write-Log '修复计划不是合法 JSON（多半是 Node 起不来）-> 退回内置计划'
+        return Get-BuiltinPlan
+    }
+}
+
+function Backup-File {
+    param([string]$Path, [string]$Stamp)
+    $dir = Join-Path $repairBackupRoot $Stamp
+    if (-not (Test-Path -LiteralPath $dir)) { [void](New-Item -ItemType Directory -Path $dir -Force) }
+    $safe = ($Path -replace '[:\\/]', '_')
+    $dest = Join-Path $dir $safe
+    Copy-Item -LiteralPath $Path -Destination $dest -Force
+    # 记下原始路径：回滚时不能靠把文件名里的下划线还原（路径本身可能就有下划线）
+    Set-Content -LiteralPath ($dest + '.path') -Value $Path -Encoding UTF8
+    return $dest
+}
+
+function Invoke-StartService {
+    param($Params)
+    switch ($Params.service) {
+        'web' { Start-WebHost }
+        'desktop' { Start-DesktopApp }
+        default { Write-Log ("未知服务：" + $Params.service) }
+    }
+}
+
+function Invoke-DisablePluginEntry {
+    param($Params)
+    $file = $Params.file
+    $entryId = $Params.entryId
+    if (-not (Test-Path -LiteralPath $file)) { Write-Log "找不到文件：$file"; return $false }
+    $lines = Get-Content -LiteralPath $file -Encoding UTF8
+    $pattern = '^\s*-\s*id:\s*[''"]?' + [regex]::Escape($entryId) + '[''"]?\s*$'
+    $idx = -1
+    for ($i = 0; $i -lt $lines.Count; $i++) {
+        if ($lines[$i] -match $pattern) { $idx = $i; break }
+    }
+    if ($idx -lt 0) { Write-Log "文件里找不到 entry：$entryId"; return $false }
+    for ($j = $idx; $j -lt [Math]::Min($idx + 6, $lines.Count); $j++) {
+        if ($lines[$j] -match '^\s*disabled:\s*true') { Write-Log "这条已经禁用了：$entryId"; return $true }
+    }
+    $indent = ($lines[$idx] -replace '^(\s*).*$', '$1')
+    $newLine = $indent + '  disabled: true'
+    $out = @()
+    for ($i = 0; $i -lt $lines.Count; $i++) {
+        $out += $lines[$i]
+        if ($i -eq $idx) { $out += $newLine }
+    }
+    try {
+        Set-Content -LiteralPath $file -Value $out -Encoding UTF8
+        Write-Log ("已禁用 entry：" + $entryId + "（插入一行：" + $newLine.Trim() + "）")
+        return $true
+    } catch {
+        Write-Log "写文件失败：$($_.Exception.Message)"
+        return $false
+    }
+}
+
+function Invoke-Action {
+    param($Action, [string]$Stamp)
+    Write-Log ("----- 动作：" + $Action.title + "（" + $Action.risk + " 类）")
+    Write-Log ("原因：" + $Action.why)
+
+    if ($Action.params -and $Action.params.file) {
+        try {
+            $b = Backup-File -Path $Action.params.file -Stamp $Stamp
+            Write-Log "备份：" + $b
+        } catch {
+            Write-Log "备份失败，取消这个动作：$($_.Exception.Message)"
+            return $false
+        }
+    }
+
+    $ok = $false
+    switch ($Action.type) {
+        'start-service' { Invoke-StartService -Params $Action.params; $ok = $true }
+        'disable-plugin-entry' { $ok = Invoke-DisablePluginEntry -Params $Action.params }
+        default { Write-Log ("不认识的动作类型，拒绝执行：" + $Action.type); return $false }
+    }
+    if (-not $ok) { return $false }
+
+    $verified = $false
+    if ($Action.verify -and $Action.verify.kind -eq 'port') {
+        Write-Log ("等待端口 " + $Action.verify.port + " 开始监听（最多 30 秒）…")
+        $verified = Wait-PortListening -Port ([int]$Action.verify.port) -TimeoutSec 30
+    } elseif ($Action.verify -and $Action.verify.kind -eq 'file-contains') {
+        $verified = (Get-Content -LiteralPath $Action.verify.file -Raw -Encoding UTF8) -match [regex]::Escape($Action.verify.contains)
+    } else {
+        $verified = $true
+    }
+    if ($verified) { Write-Log '验证：通过' } else { Write-Log '验证：未通过（可能还需要重启宿主才生效）' }
+    return $verified
+}
+
+function Invoke-Repair {
+    Write-Log '===== 一键修复开始'
+    $plan = Get-Plan
+    if (-not $plan) { Write-Log '拿不到修复计划，什么都没做'; return }
+    $actions = @($plan.actions)
+    $notes = @($plan.notes)
+    if ($actions.Count -eq 0 -and $notes.Count -eq 0) { Write-Log '没有需要修复的项。'; return }
+
+    $aCount = @($actions | Where-Object { $_.risk -eq 'A' }).Count
+    $bCount = @($actions | Where-Object { $_.risk -eq 'B' }).Count
+    Write-Log ("计划：A 类 " + $aCount + " 项，B 类 " + $bCount + " 项，人工项 " + $notes.Count + " 项")
+
+    $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
+    $done = 0
+    $failed = 0
+    $skipped = 0
+
+    foreach ($a in $actions) {
+        if ($a.risk -eq 'A') {
+            Write-Host ("`n[A] " + $a.title) -ForegroundColor Green
+            Write-Host ("    原因：" + $a.why) -ForegroundColor DarkGray
+            if (Invoke-Action -Action $a -Stamp $stamp) { $done++ } else { $failed++ }
+        } elseif ($a.risk -eq 'B') {
+            Write-Host ("`n[B] " + $a.title) -ForegroundColor Yellow
+            Write-Host ("    原因：" + $a.why) -ForegroundColor DarkGray
+            Write-Host '    这类改动会写文件（已自动备份），确认才执行。' -ForegroundColor DarkGray
+            $ans = Read-Host '    执行吗？(y/N)'
+            if ($ans -match '^[yY]') {
+                if (Invoke-Action -Action $a -Stamp $stamp) { $done++ } else { $failed++ }
+            } else {
+                Write-Log ("跳过：" + $a.title)
+                $skipped++
+            }
+        }
+    }
+
+    if ($notes.Count -gt 0) {
+        Write-Host "`n需要人工处理（不会自动执行）：" -ForegroundColor Cyan
+        foreach ($n in $notes) {
+            Write-Host ("  - " + $n.title + "：" + $n.why)
+            if ($n.caseId) { Write-Host ("    案例：" + $n.caseId) -ForegroundColor DarkGray }
+        }
+    }
+
+    $record = [pscustomobject]@{ stamp = $stamp; done = $done; failed = $failed; skipped = $skipped; actions = $actions }
+    try {
+        $dir = Join-Path $repairBackupRoot $stamp
+        if (-not (Test-Path -LiteralPath $dir)) { [void](New-Item -ItemType Directory -Path $dir -Force) }
+        ($record | ConvertTo-Json -Depth 6) | Set-Content -LiteralPath (Join-Path $dir 'actions.json') -Encoding UTF8
+    } catch { }
+    Write-Log ("===== 一键修复结束：成功 " + $done + "，失败 " + $failed + "，跳过 " + $skipped)
+    Write-Host ("`n结果：成功 " + $done + " / 失败 " + $failed + " / 跳过 " + $skipped) -ForegroundColor Cyan
+    Write-Host ("备份与动作记录：" + (Join-Path $repairBackupRoot $stamp)) -ForegroundColor DarkGray
+}
+
+function Invoke-Rollback {
+    if (-not (Test-Path -LiteralPath $repairBackupRoot)) { Write-Log '还没有任何修复备份'; return }
+    $dirs = @(Get-ChildItem -LiteralPath $repairBackupRoot -Directory | Sort-Object Name -Descending)
+    if ($dirs.Count -eq 0) { Write-Log '还没有任何修复备份'; return }
+    $latest = $dirs[0].FullName
+    Write-Host ("最近一次修复：" + $dirs[0].Name) -ForegroundColor Cyan
+    # 只看 .path 边车文件：每个被备份的原文件都有一条，里面写着原始路径
+    $maps = @(Get-ChildItem -LiteralPath $latest -File -Filter '*.path')
+    if ($maps.Count -eq 0) { Write-Log '这次修复没有改过文件（只启动过服务），无需回滚'; return }
+    foreach ($m in $maps) {
+        Write-Host ("  将还原：" + (Get-Content -LiteralPath $m.FullName -Raw -Encoding UTF8).Trim())
+    }
+    $ans = Read-Host '确认回滚这些文件吗？(y/N)'
+    if ($ans -notmatch '^[yY]') { Write-Log '已取消回滚'; return }
+    foreach ($m in $maps) {
+        $orig = (Get-Content -LiteralPath $m.FullName -Raw -Encoding UTF8).Trim()
+        $backup = $m.FullName.Substring(0, $m.FullName.Length - 5)
+        try {
+            Copy-Item -LiteralPath $backup -Destination $orig -Force
+            Write-Log ("已还原：" + $orig)
+        } catch {
+            Write-Log ("还原失败：" + $orig + " —— " + $_.Exception.Message)
+        }
+    }
+    Write-Log '回滚结束'
+}
+
 function Show-Menu {
     Write-Host ''
     Write-Host '------------------------------------------------' -ForegroundColor DarkGray
@@ -305,6 +546,8 @@ function Show-Menu {
     Write-Host '  3  启动桌面端'
     Write-Host '  4  打开急救包目录（看日志）'
     Write-Host '  5  打开 DSH 配置目录'
+    Write-Host '  6  一键修复（A 类全做、B 类逐条确认、C 类只给指路）' -ForegroundColor Green
+    Write-Host '  7  回滚上一次修复（从 backups 还原被改的文件）'
     Write-Host '  0  退出'
     Write-Host '------------------------------------------------' -ForegroundColor DarkGray
 }
@@ -319,8 +562,10 @@ while ($true) {
         '3' { Start-DesktopApp; Wait-Enter }
         '4' { Start-Process explorer.exe -ArgumentList $here; }
         '5' { Start-Process explorer.exe -ArgumentList (Join-Path $env:USERPROFILE '.dsh'); }
+        '6' { Invoke-Repair; Wait-Enter }
+        '7' { Invoke-Rollback; Wait-Enter }
         '0' { Write-Log '退出'; break }
-        default { Write-Host '看不懂这个输入，按 1-5 或 0' -ForegroundColor Yellow }
+        default { Write-Host '看不懂这个输入，按 0-7' -ForegroundColor Yellow }
     }
     if ($pick -eq '0') { break }
 }

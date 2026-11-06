@@ -99,3 +99,26 @@ test('重复导出到同一目录是幂等的', () => {
         rmSync(dir, { recursive: true, force: true });
     }
 });
+
+test('急救包带修复执行器（动作白名单 + 备份 + 回滚），且没有"跑任意命令"的口子', () => {
+    const dir = tmp();
+    try {
+        exportKit(dir, { packageRoot: ROOT });
+        const ps = readFileSync(path.join(dir, 'rescue.ps1'), 'utf8');
+        for (const fn of ['function Invoke-Repair', 'function Invoke-Rollback', 'function Invoke-DisablePluginEntry']) {
+            assert.ok(ps.includes(fn), `缺少 ${fn}`);
+        }
+        // 动作类型是枚举：执行器只认这几个
+        assert.ok(ps.includes("'start-service'"));
+        assert.ok(ps.includes("'disable-plugin-entry'"));
+        assert.ok(ps.includes("不认识的动作类型，拒绝执行"), '未知动作必须拒绝，而不是想办法执行');
+        // 备份与回滚
+        assert.ok(ps.includes('repairBackupRoot'));
+        assert.ok(ps.includes("'.path'") || ps.includes(".path"), '回滚要靠 .path 边车记录原始路径');
+        // 没有任何"把 JSON 里的字符串当命令跑"的写法
+        assert.equal(/Invoke-Expression/.test(ps), false, '不允许 Invoke-Expression');
+        assert.equal(/cmd\s*\/c\s*\$/.test(ps), false, '不允许把变量拼进 cmd /c');
+    } finally {
+        rmSync(dir, { recursive: true, force: true });
+    }
+});

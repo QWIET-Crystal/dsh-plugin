@@ -30,7 +30,7 @@ test('可用时：Standard Schema 与 toJSON 必须齐全', { skip: !CONFIG_AVAI
     assert.equal(typeof Config.toJSON(), 'object');
 });
 
-test('可用时：设置页需要的 12 个字段都在，且都可在线改、都有说明', { skip: !CONFIG_AVAILABLE }, () => {
+test('可用时：设置页需要的 14 个字段都在，且都可在线改、都有说明', { skip: !CONFIG_AVAILABLE }, () => {
     const json = Config.toJSON();
     // schemastery 的 toJSON 是 refs/uid 图：根节点 id 在 uid，字段表在 refs[uid].dict（name → ref id）
     const root = json.refs ? json.refs[String(json.uid)] : null;
@@ -49,6 +49,8 @@ test('可用时：设置页需要的 12 个字段都在，且都可在线改、�
         'runsRetention',
         'deepWriteProbe',
         'headerBadge',
+        'sessionScan',
+        'deepSessions',
         'contributeGuide',
     ];
     for (const key of expected) assert.ok(names.includes(key), `缺少字段 ${key}`);

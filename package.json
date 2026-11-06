@@ -1,6 +1,6 @@
 {
   "name": "@qweit-crystal/dsh-doctor",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "跨引擎 DSH 体检插件：自动发现本机所有 DeepSeek Harness 引擎/实例与 profile，分层体检（端口/装配/ABI/日志），结论带稳定 id 与「无法取证」态，附脱敏案例库与体检历史；设置面板左栏提供「体检」「贡献病例」两页。写点只有两个，都可关。",
   "type": "module",
   "main": "lib/index.js",

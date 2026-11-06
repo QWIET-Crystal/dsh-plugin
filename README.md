@@ -20,6 +20,7 @@ npm 全局内核、桌面端内置内核、若干 `DSH_HOME`（用户目录的 `
 | 装配层 | 每个 profile 的 `bundles` / 依赖 / `cordis.patch.yml` | 装了不加载 = 白装 |
 | ABI 层 | 每个 bundle 能否解析到、`peerDependencies['@deepseek-ai/dsh']` 是否满足本机内核 | **升级内核前**就能知道哪些插件会挂，而不是等 `Failed to load plugins` |
 | 日志层 | 已知故障签名（插件被禁用、等已删除的服务、GPU 崩溃……） | 有些故障**不报错**，只留一行 warn |
+| 会话层 | 最近会话的**事件流统计**（空回合、重复坍缩） | 服务活着、日志干净，但模型在退化——端口层永远看不见 |
 | 判定层 | 故障 / 注意 / **无法取证** / 信息 / 正常 + 案例指针 | "取不到证"和"证明确实坏了"是两件事 |
 
 ## 安装
@@ -81,6 +82,8 @@ entry id 保持 `dsh-doctor` 不变，改的只是包名 —— 客户端模块�
 | `saveRuns` | `true` | 写点②：每轮结论记进 `runs/`；设 `false` 回到纯只读 |
 | `runsRetention` | 30 | 历史保留条数（超出删最旧的） |
 | `deepWriteProbe` | `false` | 对桌面端安装目录做"写空文件再删"的真探针（**写操作**，见下"已知限制"） |
+| `sessionScan` | `true` | 扫描会话事件（只读最近一个会话的尾部；**只统计、不输出正文**） |
+| `deepSessions` | `false` | 会话扫描放宽到最近 24 小时内所有会话（每个尾部 2MB） |
 | `headerBadge` | `true` | 会话界面右上角显示「体检」小徽章（有问题变色；设 `false` 隐藏） |
 | `contributeGuide` | 四步流程 | **提醒用**：`doctor_case_add` → 复制进 `docs/cases/` → 重建索引 → 开 PR |
 
@@ -156,6 +159,37 @@ dsh-doctor kit --to "C:\Users\你\Desktop\DSH急救"   # 或让 Agent 调 doctor
 
 > 为什么急救包可以执行、插件却坚持零执行面：急救包是**用户主动双击**的独立产物，权限模型不同；
 > 插件住在宿主里，一动 `child_process` 就会让 `test/safety.test.mjs` 的静态断言失效。
+
+## 会话层检查（0.5.0）
+
+有一类故障**端口在听、HTTP 正常、日志无错**，只是模型在退化（典型：思考通道退化成同一短语重复上万次，
+每一轮都"空回合"且状态是 `completed`）。只看服务的体检永远发现不了它。
+
+- 会话文件是**多帧 zstd**：整段 `zstdDecompressSync` **只解第一帧**（实测 3.2MB/2,481 帧只吐出 187 字节）。
+  这里自带帧游走器，按 magic `28 B5 2F FD` 切段逐帧解。
+- 默认只读**最近一个会话的尾部 1MB**（实测 951 帧 / 1,529 事件，整条体检 0.34 秒）；
+  `deepSessions` 放宽到 24 小时内所有会话（每个尾部 2MB）。
+- 两条判定：
+  - `SESSION.EMPTY_TURN`（warn）：一轮里只有推理、**既无正文也无工具调用**；
+  - `SESSION.REPETITION.COLLAPSE`（warn）：单条 ≥20k 字符的消息里同一短单元出现 ≥100 次**且覆盖率 ≥50%**。
+- **只输出数字**（第几轮、重复次数、占比），会话原文不进报告、不进 `runs/`。
+- 处置参考案例：[`2026-11-06-reasoning-repetition-collapse`](docs/cases/2026-11-06-reasoning-repetition-collapse.md)。
+
+## 会话层之外：一键修复（急救包 0.5.0）
+
+`dsh-doctor plan [--json]` 把体检结论翻译成**动作清单**（数据），由急救包执行。
+动作类型是枚举白名单，没有"跑任意命令"的口子：
+
+| 动作 | 触发条件 | 风险 | 验证方式 |
+| --- | --- | --- | --- |
+| `start-service` | 端口没在监听但有对应宿主 | A（一键做） | 等端口 `LISTENING`（30 秒） |
+| `disable-plugin-entry` | 宿主日志**点名**某个插件加载失败 | B（逐条确认） | 写入后文件包含 `disabled: true` |
+| `restore-file` | 配置损坏且存在备份 | B | 内容哈希一致 |
+| —— | 会话损坏 / ACL / 重装内核 | C（只给指路） | 不产动作 |
+
+急救包菜单对应两项：**6 一键修复**（A 类全做、B 类逐条问、C 类只列出来）、**7 回滚上一次修复**。
+每个动作固定"备份 → 执行 → 验证 → 记日志"；备份在 `<急救包>/backups/<时间戳>/`，
+每个被改文件留 `.path` 边车记录原始路径。没有 Node 时退化成内置最小计划（只做 A 类启动）。
 
 ## 安全模型（详见 [SECURITY.md](SECURITY.md)）
 
@@ -303,6 +337,8 @@ dsh-doctor engines        # 本机所有引擎/实例（home/profile/npm/桌面�
 dsh-doctor check          # 分层体检；退出码 0 全绿 / 1 注意 / 2 故障 / 3 无法完整取证
 dsh-doctor check --html <file>   # 额外生成自包含 HTML 报告
 dsh-doctor fix            # 只输出「照抄即可」的修理清单（**不执行**）
+dsh-doctor plan [--json]  # 输出「修复计划」动作清单（由急救包执行；本命令不动手）
+dsh-doctor check --deep-sessions   # 会话扫描放宽到 24 小时内所有会话
 dsh-doctor kit --to <目录> # 导出急救包（双击即用）
 dsh-doctor runs [name]    # 体检历史：列最近若干条，或读某一条的完整 JSON
 dsh-doctor cases [id]     # 两库索引 / 读单条
