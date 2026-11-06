@@ -14,7 +14,7 @@ import path from 'node:path';
 import { runCheck } from '../lib/check.js';
 import { IDS } from '../lib/findings.js';
 import { buildCaseTemplate, detectRepair, renderRepairHint } from '../lib/repair.js';
-import { saveRun } from '../lib/runs.js';
+import { saveRun, readLatestRun } from '../lib/runs.js';
 
 const prevRun = (verdict, findings = []) => ({
     schemaVersion: 1,
@@ -101,6 +101,12 @@ test('runCheck：上一轮 warn + 这一轮 ok → 附带 repair 与模板，并
         assert.equal(payload.repair.previousVerdict, 'warn');
         assert.ok(payload.repair.template && payload.repair.template.includes('## 症状'), 'payload 里要带模板供客户端复制');
         assert.ok(payload.findings.some((f) => f.id === IDS.CASE_CONTRIBUTE_SUGGESTED && f.level === 'info'));
+
+        // 关键：repair 必须**落盘**——客户端是从 runs/ 读最近一次来弹提醒的
+        const saved = readLatestRun(runsDir);
+        assert.ok(saved, '应该写出了新的 run');
+        assert.equal(saved.repair && saved.repair.detected, true, '落盘的 run 里必须带 repair');
+        assert.ok(saved.repair.template && saved.repair.template.includes('## 症状'), '落盘模板要能直接复制');
     } finally {
         rmSync(root, { recursive: true, force: true });
     }
