@@ -1,7 +1,8 @@
-# dsh-doctor：两个案例库，一个 bundle 层，不覆盖任何宿主执行器。
+# dsh-doctor：两个案例库 + 体检历史，一个 bundle 层，不覆盖任何宿主执行器。
+# 注意：`name` 是**包名**（解析用），`id` 才是稳定的 entry id（客户端按包名登记模块，两者别混）。
 - insert:
     - id: dsh-doctor
-      name: dsh-doctor
+      name: '@qweit-crystal/dsh-doctor'
       # 设置栏里显示的名字（客户端读 entry.options.label；宿主不认时会回退显示 id）
       label: 贡献病例
       config:
@@ -16,3 +17,14 @@
         # localCasesDir: <默认值 $DSH_HOME/dsh-doctor/cases>
         casesPrefer: local        # 同名 id 时 local 优先（本地覆盖共享）
         allowLocalCaseWrite: true # 想彻底只读就设 false
+
+        # 体检历史（第二个写点）：每轮结论落到 $DSH_HOME/dsh-doctor/runs/
+        saveRuns: true            # 设 false 回到纯只读（doctor_runs 会变空）
+        runsRetention: 30         # 保留最近多少条，超出删最旧的
+
+        # 升级前体检：对桌面端安装目录做"写空文件再删"的真探针（**写操作**，默认关）
+        # 为什么不用 fs.access(W_OK)：Windows 上它看只读属性而不是 ACL，永远报可写。
+        deepWriteProbe: false
+
+        # 会话界面右上角的「体检」小徽章（有问题时变色；设 false 隐藏）
+        headerBadge: true

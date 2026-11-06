@@ -8,27 +8,42 @@
  *
  * 用法：
  *   dsh-doctor engines [--json]            # 发现本机所有引擎/实例
- *   dsh-doctor check   [--json] [--deep]   # 分层体检（端口/装配/日志）
+ *   dsh-doctor check   [--json] [--no-deep] [--no-save] [--html <file>]   # 分层体检
+ *   dsh-doctor fix     [--json]            # 只输出"照抄即可"的修理清单（不执行）
+ *   dsh-doctor kit     --to <dir>          # 导出急救包（.cmd + .ps1 + 内置副本）
+ *   dsh-doctor runs    [name] [--json]     # 体检历史
  *   dsh-doctor cases   [id] [--json]       # 两库索引 / 读单条
  *   dsh-doctor contribute --from <file> …  # 一键脱敏入册（转 tools/contribute.mjs）
  *
- * 退出码：0 全绿 / 1 有注意项 / 2 有真故障或参数错误
+ * 退出码（0.2.0 起）：0 全绿 / 1 有注意项 / 2 有真故障或参数错误 / 3 无法完整取证
+ *   3 的含义是"我不确定"：有探测没能完成，所以 0/1 都不能当真。有 fault 时仍然是 2。
  */
 
 import { execFileSync } from 'node:child_process';
+import { writeFileSync } from 'node:fs';
 import path from 'node:path';
 
-import { listCases, readCase, renderCaseIndex, resolveCaseSources } from '../lib/cases.js';
+import { runCheck } from '../lib/check.js';
+import { listCases, markPromoted, readCase, renderCaseIndex, renderCaseSearch, resolveCaseSources, searchCases } from '../lib/cases.js';
 import { discover } from '../lib/detect.js';
-import { collectFindings, renderEngines, renderReport, scanDesktopLogs } from '../lib/report.js';
-import { hostToolsOrigin } from '../lib/index.js';
+import { renderHtml } from '../lib/html.js';
+import { redactPayload, renderEngines, renderPayload } from '../lib/report.js';
+import { listRuns, readRun, renderRuns, resolveRunsDir } from '../lib/runs.js';
 import { localIdentity, redact } from '../lib/safety.js';
 
 const PACKAGE_ROOT = path.join(import.meta.dirname, '..');
 const argv = process.argv.slice(2);
 const cmd = argv[0] || 'help';
 const flags = new Set(argv.filter((a) => a.startsWith('--')));
-const positional = argv.slice(1).filter((a) => !a.startsWith('--'));
+/** 这些开关后面跟一个值，不能把它当位置参数。 */
+const VALUE_FLAGS = new Set(['--html', '--to', '--from', '--repo', '--search', '--limit']);
+const flagValue = (name) => {
+    const i = argv.indexOf(name);
+    return i >= 0 && i + 1 < argv.length ? argv[i + 1] : null;
+};
+const positional = argv
+    .slice(1)
+    .filter((a, i, arr) => !a.startsWith('--') && !VALUE_FLAGS.has(arr[i - 1] || ''));
 const json = flags.has('--json');
 
 function out(obj) {
@@ -42,13 +57,18 @@ async function main() {
             [
                 'dsh-doctor —— 脱离宿主的离线体检与案例库工具',
                 '',
-                '  dsh-doctor engines [--json]           发现本机所有 DSH 引擎/实例/profile',
-                '  dsh-doctor check   [--json] [--no-deep]  分层体检（默认扫日志；--no-deep 跳过）',
-                '  dsh-doctor where   [--json]           宿主包解析到哪一份（工具没反应时先看它）',
-                '  dsh-doctor cases   [id] [--json]      两库索引；给 id 则读单条',
+                '  dsh-doctor engines [--json]             发现本机所有 DSH 引擎/实例/profile',
+                '  dsh-doctor check   [--json] [--no-deep] [--no-save] [--html <file>] [--quiet]',
+                '                                          分层体检（--html 出自包含报告；--quiet 只留退出码）',
+                '  dsh-doctor fix     [--json]             只输出「照抄即可」的修理清单（不执行任何东西）',
+                '  dsh-doctor kit     --to <目录>          导出急救包（双击即用，含 .cmd/.ps1 与内置副本）',
+                '  dsh-doctor runs    [name] [--json]      体检历史：不带 name 列清单，给 name 读单条',
+                '  dsh-doctor where   [--json]             宿主包解析到哪一份（工具没反应时先看它）',
+                '  dsh-doctor cases   [id] [--json]        两库索引；给 id 则读单条',
+                '  dsh-doctor case-promote <本地id> <共享id>  合入后在本地病例里留一行 promoted 标记',
                 '  dsh-doctor contribute --from <file> [--pr] [--dry-run]',
                 '',
-                '退出码：0 全绿 / 1 有注意项 / 2 有真故障或参数错误',
+                '退出码：0 全绿 / 1 有注意项 / 2 有真故障或参数错误 / 3 无法完整取证',
             ].join('\n'),
         );
         return 0;
@@ -57,7 +77,12 @@ async function main() {
     if (cmd === 'engines') {
         const d = await discover({});
         if (json) {
-            out({ homes: d.homes.map((h) => ({ dir: redact(h.dir, identity), profiles: h.profiles.map((p) => p.name) })), engines: d.engines.map((e) => ({ kind: e.kind, version: e.version, kernel: e.kernelVersion })), running: d.running.map((r) => r.port) });
+            out({
+                homes: d.homes.map((h) => ({ dir: redact(h.dir, identity), profiles: h.profiles.map((p) => p.name), error: h.error || null })),
+                engines: d.engines.map((e) => ({ kind: e.kind, version: e.version, kernel: e.kernelVersion })),
+                running: d.running.map((r) => r.port),
+                capabilities: d.capabilities,
+            });
             return 0;
         }
         console.log(renderEngines(d, identity));
@@ -65,25 +90,129 @@ async function main() {
     }
 
     if (cmd === 'check') {
-        const d = await discover({});
-        // 默认扫日志：空绿比报错更危险（--no-deep 才跳过）
-        const deep = !flags.has('--no-deep');
-        const logScan = deep
-            ? scanDesktopLogs(process.env, { maxLogBytes: 2 * 1024 * 1024, httpTimeoutMs: 1200 })
-            : { hits: [], scanned: [], warnings: ['已跳过日志扫描（--no-deep）'] };
-        const findings = collectFindings(d, logScan);
-        if (json) {
-            out({ findings, scanned: logScan.scanned });
-        } else {
-            console.log(renderReport(d, findings, logScan, identity));
+        // 默认扫日志、默认记历史：空绿比报错更危险（--no-deep / --no-save 才跳过）
+        const payload = await runCheck({
+            env: process.env,
+            deep: !flags.has('--no-deep'),
+            saveRuns: !flags.has('--no-save'),
+            retention: 30,
+            throttleMs: 15000,
+        });
+        const htmlPath = flagValue('--html');
+        const quiet = flags.has('--quiet');
+        if (htmlPath) {
+            writeFileSync(path.resolve(htmlPath), renderHtml(redactPayload(payload), {}), 'utf8');
+            if (!json && !quiet) console.error(`[dsh-doctor] HTML 报告已写入 ${path.resolve(htmlPath)}`);
         }
-        const faults = findings.filter((f) => f.level === 'fault').length;
-        const warns = findings.filter((f) => f.level === 'warn').length;
-        return faults > 0 ? 2 : warns > 0 ? 1 : 0;
+        if (json) out(payload);
+        else if (!quiet) console.log(renderPayload(payload, identity));
+        return payload.exitCode;
+    }
+
+    if (cmd === 'fix') {
+        // 只列"照抄即可"的命令，**不执行**：执行属于急救包的职责（插件保持零执行面）
+        const payload = await runCheck({
+            env: process.env,
+            deep: !flags.has('--no-deep'),
+            saveRuns: !flags.has('--no-save'),
+            retention: 30,
+            throttleMs: 15000,
+        });
+        const withFix = payload.findings.filter((f) => (f.fix || []).length);
+        const noFix = payload.findings.filter((f) => !(f.fix || []).length && ['fault', 'unknown', 'warn'].includes(f.level));
+        const actionable = [...withFix, ...noFix];
+        if (json) {
+            out({ verdict: payload.verdict, exitCode: payload.exitCode, summary: payload.summary, actionable, withoutCommand: noFix });
+            return payload.exitCode;
+        }
+        const lines = [];
+        lines.push('# 修理清单（照抄即可；本命令不会执行任何东西）');
+        lines.push('');
+        if (withFix.length === 0 && noFix.length === 0) {
+            lines.push('没有需要动手的项。');
+        } else {
+            withFix.forEach((f, i) => {
+                lines.push(`## ${i + 1}. [${f.level}] ${f.area}：${f.text}`);
+                if (f.caseId) lines.push(`   → 案例 ${f.caseId}`);
+                for (const c of f.fix) lines.push('   $ ' + c);
+                lines.push('');
+            });
+            if (noFix.length) {
+                lines.push('## 需要看一眼，但没有可直接执行的命令');
+                lines.push('');
+                for (const f of noFix) {
+                    lines.push(`- [${f.level}] ${f.area}：${f.text}${f.caseId ? ` → 案例 ${f.caseId}` : ''}`);
+                }
+                lines.push('');
+                lines.push('（想补上可执行命令：把那次的处置写成病例里的 `## 处置命令` 章节，下次就会自动带出来。）');
+                lines.push('');
+            }
+        }
+        lines.push(`判定：${payload.verdict}（退出码 ${payload.exitCode}）`);
+        console.log(lines.join('\n'));
+        return payload.exitCode;
+    }
+
+    if (cmd === 'kit') {
+        const to = flagValue('--to') || positional[0];
+        if (!to) {
+            console.error('用法：dsh-doctor kit --to <导出目录>');
+            return 2;
+        }
+        const { exportKit } = await import('../lib/kit.js');
+        const r = exportKit(path.resolve(to), { packageRoot: PACKAGE_ROOT });
+        if (json) out(r);
+        else {
+            console.log(`急救包已导出到 ${r.dir}`);
+            console.log(`  双击：${r.entry}`);
+            console.log(`  文件：${r.files.length} 个，共 ${(r.bytes / 1024).toFixed(1)} KB`);
+        }
+        return r.ok ? 0 : 2;
+    }
+
+    if (cmd === 'runs') {
+        const dir = resolveRunsDir(process.env);
+        const name = positional[0];
+        if (name) {
+            const hit = readRun(dir, name);
+            if (!hit.ok) {
+                console.error(`读不到历史 ${name}（${hit.reason}）`);
+                return 2;
+            }
+            if (json) out({ name, path: redact(hit.path, identity), doc: hit.doc });
+            else console.log(hit.text);
+            return 0;
+        }
+        const runs = listRuns(dir, 30);
+        if (json) out({ dir: redact(dir, identity), runs });
+        else console.log(renderRuns(runs, dir, (p) => redact(p, identity)));
+        return 0;
+    }
+
+    if (cmd === 'case-promote') {
+        // 本地病例合入共享库后，在本地文件里留一行 `> promoted: <shared-id>`（不删文件）
+        const [localId, sharedId] = positional;
+        if (!localId || !sharedId) {
+            console.error('用法：dsh-doctor case-promote <本地病例id> <共享库病例id>');
+            return 2;
+        }
+        const sources = resolveCaseSources({}, process.env, PACKAGE_ROOT);
+        const r = markPromoted(sources, localId, sharedId);
+        if (json) out(r);
+        else if (r.ok) console.log(r.already ? `已经是这个标记了：${r.path}` : `已标记为合入共享库：${r.path}`);
+        else console.error(`未标记（${r.reason}）${r.previous ? `；原标记是 ${r.previous}` : ''}`);
+        return r.ok ? 0 : 2;
     }
 
     if (cmd === 'cases') {
         const sources = resolveCaseSources({}, process.env, PACKAGE_ROOT);
+        const kw = flagValue('--search');
+        if (kw) {
+            const result = searchCases(sources, kw, { limit: Number(flagValue('--limit')) || 20 });
+            if (json) out(result);
+            else console.log(renderCaseSearch(result, identity));
+            return result.hits.length > 0 ? 0 : 1;
+        }
         const id = positional[0];
         if (!id) {
             const listing = listCases(sources);
@@ -103,6 +232,9 @@ async function main() {
 
     if (cmd === 'where') {
         // 漂移排查：宿主包到底解析到哪一份（陌生人报"工具没反应"时先看这个）
+        // 动态导入：正常命令不该把整个插件入口（含宿主解析）也加载一遍
+        process.env.DSH_DOCTOR_QUIET = '1';
+        const { hostToolsOrigin } = await import('../lib/index.js');
         const origin = hostToolsOrigin;
         if (json) out({ hostTools: origin || null });
         else console.log(origin ? `@deepseek-ai/dsh-tools ← ${origin}` : '@deepseek-ai/dsh-tools 未解析到（工具将以最小形状注册）');
@@ -120,7 +252,7 @@ async function main() {
         }
     }
 
-    console.error(`未知命令: ${cmd}（可用 engines / check / cases / contribute，或 --help）`);
+    console.error(`未知命令: ${cmd}（可用 engines / check / runs / cases / contribute，或 --help）`);
     return 2;
 }
 

@@ -71,6 +71,13 @@ TCP    127.0.0.1:11870        0.0.0.0:0    LISTENING    21324
 | 3 | 部署常驻守护自动收割 | 后续 3 次死锁均被自动处理 |
 | 4 | agent 最终拿到完整测试结果 | 756 tests / 687 pass / 54 fail |
 
+## 处置命令
+
+```sh
+# 给它并发上限和单测超时：worker 卡死时 runner 会自己结算，而不是无限等待
+node --test --test-concurrency=2 --test-timeout=60000
+```
+
 ## 回填清单
 
 - [x] `dsh-doctor.ps1`：守护层检查心跳与收割记录

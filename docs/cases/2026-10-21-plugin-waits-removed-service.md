@@ -27,15 +27,17 @@ better-sidebar (dsh-better-sidebar): pending (waiting for service: webRuntime)
 
 ## 处置
 
-把该插件升到不再注入该服务的版本（桌面端要走应用自己的 CLI，GUI 子系统程序不接控制台，输出必须重定向到文件）：
+把该插件升到不再注入该服务的版本（桌面端要走应用自己的 CLI，GUI 子系统程序不接控制台，输出必须重定向到文件）。
+命令见下面的「处置命令」；装完看 `%TEMP%\bs.txt`：出现 `✓ Lockfile passes supply-chain policies` 即落地。
+
+- 若卡在 `ERR_PNPM_MINIMUM_RELEASE_AGE_VIOLATION`（24h 冷却期）：先查目标版本发布时间，只有"其它已装包太新"时才需要 `--config.minimumReleaseAge=0` 一次性放行（pnpm 会自己往 `pnpm-workspace.yaml` 写 `minimumReleaseAgeExclude` 留痕）；
+- **必须重启宿主**才生效，且要走 `schtasks` 通道（会话内起的 GUI 会被沙箱作业回收）。
+
+## 处置命令
 
 ```cmd
 set ELECTRON_RUN_AS_NODE=1 && "…\DSH Desktop.exe" "…\resources\app\lib\desktop-cli.js" plugin --profile desktop add dsh-better-sidebar@0.28.0 > "%TEMP%\bs.txt" 2>&1
 ```
-
-- 装完看 `%TEMP%\bs.txt`：出现 `✓ Lockfile passes supply-chain policies` 即落地；
-- 若卡在 `ERR_PNPM_MINIMUM_RELEASE_AGE_VIOLATION`（24h 冷却期）：先查目标版本发布时间，只有"其它已装包太新"时才需要 `--config.minimumReleaseAge=0` 一次性放行（pnpm 会自己往 `pnpm-workspace.yaml` 写 `minimumReleaseAgeExclude` 留痕）；
-- **必须重启宿主**才生效，且要走 `schtasks` 通道（会话内起的 GUI 会被沙箱作业回收）。
 
 ## 验证
 

@@ -16,6 +16,8 @@
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import path from 'node:path';
 
+import { extractCommands, extractKind, extractPromoted, isCaseFile, CASE_ID_RE } from '../lib/cases.js';
+
 const DIR = process.argv[2] || path.join(import.meta.dirname, '..', 'docs', 'cases');
 // 允许 a.b 这种版本号片段（历史案例里有 2.0.4-to-2.0.17）
 const FILE_RE = /^\d{4}-\d{2}-\d{2}-[a-z0-9]+(?:[.-][a-z0-9]+)*\.md$/;
@@ -65,7 +67,7 @@ function rel(p) {
 function main() {
     let names = [];
     try {
-        names = readdirSync(DIR).filter((n) => n.endsWith('.md') && n !== 'INDEX.md').sort();
+        names = readdirSync(DIR).filter(isCaseFile).sort();
     } catch (e) {
         console.error(`[lint-cases] 读不到案例目录：${DIR}（${e && e.code}）`);
         process.exit(2);
@@ -84,12 +86,26 @@ function main() {
         if (st.size > MAX_BYTES) problems.push(`${name}：${(st.size / 1024).toFixed(1)} KB 超上限（> 40 KB），该拆文件`);
 
         const text = readFileSync(file, 'utf8');
+        // 类型（0.4.0）：缺省 runtime；写错值直接报错，别让它悄悄退化成 runtime
+        const kind = extractKind(text);
+        if (!kind) problems.push(`${name}：「类型」只能是 runtime 或 authoring（当前值无法识别）`);
+        const promoted = extractPromoted(text);
+        if (promoted && !CASE_ID_RE.test(promoted)) problems.push(`${name}：promoted 指向的 id 不合法（${promoted}）`);
         // 硬要求：必须有"症状/现象"，并且至少两项后续（根因/处置/验证）
         const hit = Object.fromEntries(Object.entries(CONCEPTS).map(([k, names]) => [k, hasConcept(text, names)]));
         if (!hit['症状']) problems.push(`${name}：缺「症状/现象」（案例至少要说清看到了什么）`);
         const followUps = ['根因', '处置', '验证'].filter((k) => hit[k]);
         if (followUps.length < 2) problems.push(`${name}：后续内容不足（根因/处置/验证 至少写两项，当前只有 ${followUps.join('、') || '0 项'}）`);
-        if (!hit['判定签名']) warnings.push(`${name}：没有「判定签名/判据」章节（可选，但强烈建议——否则别人难判断是不是同一个坑）`);
+        if (!hit['判定签名']) {
+            // runtime 故障没有判定签名 = 别人无法判断"我遇到的是不是同一个坑"，案例就白写了
+            if (kind === 'runtime') problems.push(`${name}：runtime 案例必须有「判定签名」（否则别人无法判断是不是同一个坑）`);
+            else warnings.push(`${name}：没有「判定签名」章节（authoring 类可选，但强烈建议）`);
+        }
+        // 「处置命令」是可选的机器可读章节：写了就必须能抽出命令，否则插件会给出一条空的 fix
+        if (/^##\s*处置命令/m.test(text)) {
+            const cmds = extractCommands(text);
+            if (cmds.length === 0) warnings.push(`${name}：「处置命令」章节里没有可识别的命令围栏（放一个 \`\`\`sh / \`\`\`powershell 块）`);
+        }
         for (const { re, why } of FINGERPRINTS) {
             const m = text.match(re);
             if (m) problems.push(`${name}：疑似指纹泄漏（${why}）：${m[0].slice(0, 40)}…`);

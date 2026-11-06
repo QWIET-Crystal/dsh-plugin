@@ -17,6 +17,24 @@
 
 判据：**别人在自己的机器上照这个描述，能不能复现/判断？** 能 → 送共享库。
 
+### 先选类型
+
+正文里用一节声明（**缺省 `runtime`**）：
+
+```markdown
+## 类型
+
+authoring
+```
+
+- `runtime` —— DSH 运行期故障。**必须有「判定签名」**，否则 lint 直接判失败；
+- `authoring` —— 插件/工具开发时踩的坑（宿主 schema DSL、注入、编码……）。判定签名建议但不强制。
+
+模板：直接复制 [`_TEMPLATE.md`](cases/_TEMPLATE.md) 改。以 `_` 开头的文件不会被 lint、索引或检索当成案例。
+
+> 不想装任何东西？在 GitHub 网页上 fork，新建 `docs/cases/<YYYY-MM-DD-短名>.md`，
+> 照模板填，然后提 PR —— 不需要本地 clone。
+
 ## 1. 生成脱敏草稿
 
 在 DSH 里调用：

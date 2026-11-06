@@ -58,7 +58,7 @@ test('模块格式：id 等于包名，factory 只 require react', () => {
     assert.equal(typeof mod.apply, 'function');
 });
 
-test('注册：往 settings.section 挂一页「贡献病例」', () => {
+test('注册：两页设置 + 一个会话头部徽章', () => {
     const spec = loadClient();
     const mod = spec.factory(() => ReactStub);
     const injected = [];
@@ -77,20 +77,49 @@ test('注册：往 settings.section 挂一页「贡献病例」', () => {
         },
     };
     mod.apply(ctx);
-    assert.deepEqual(injected, ['settings.section']);
-    assert.equal(registered.length, 1);
-    const { options, component } = registered[0];
-    assert.equal(options.name, 'settings.section');
-    assert.equal(options.id, 'dsh-doctor-contribute');
-    assert.equal(typeof options.order, 'number');
-    assert.equal(options.label(), '贡献病例');
-    // 组件能渲染
-    const tree = component({});
+    assert.deepEqual(injected, ['settings.section', 'settings.section', 'conversation.session.header.utilities']);
+    assert.equal(registered.length, 3);
+    const byId = Object.fromEntries(registered.map((r) => [r.options.id, r]));
+    assert.deepEqual(Object.keys(byId).sort(), ['dsh-doctor-badge', 'dsh-doctor-check', 'dsh-doctor-contribute']);
+    for (const r of registered) {
+        assert.equal(typeof r.options.order, 'number');
+    }
+    assert.equal(byId['dsh-doctor-check'].options.label(), '体检');
+    assert.equal(byId['dsh-doctor-contribute'].options.label(), '贡献病例');
+
+    // 头部徽章：槽位契约（name/id/registrant/inject(sessionId)）
+    const badge = byId['dsh-doctor-badge'].options;
+    assert.equal(badge.name, 'conversation.session.header.utilities');
+    assert.equal(badge.registrant, 'dsh-doctor');
+    assert.equal(typeof badge.inject, 'function');
+    assert.deepEqual(badge.inject('s1'), { sessionId: 's1' });
+
+    // 贡献页能离线渲染（体检页/徽章依赖 useState/useEffect，需要真渲染器）
+    const tree = byId['dsh-doctor-contribute'].component({});
     assert.equal(tree.type, 'div');
     const text = JSON.stringify(tree);
     for (const word of ['贡献病例', 'doctor_contribute', 'contribute.mjs', '--pr']) {
         assert.ok(text.includes(word), `页面内容应提到 ${word}`);
     }
+    assert.equal(typeof byId['dsh-doctor-check'].component, 'function');
+    assert.equal(typeof byId['dsh-doctor-badge'].component, 'function');
+});
+
+test('头部徽章：默认显示、可由服务端 ui.headerBadge=false 隐藏（源码级断言）', () => {
+    const source = readFileSync(CLIENT, 'utf8');
+    assert.ok(source.includes('headerBadge'), '必须读服务端的开关');
+    assert.ok(source.includes("refresh('POST')") || source.includes("'POST'"), '徽章里要能现场重扫');
+    for (const tone of ['fault', 'warn', 'unknown', 'ok']) {
+        assert.ok(source.includes(tone), `徽章要按 ${tone} 变色`);
+    }
+});
+
+test('体检页：不依赖宿主路由也能给出降级指引（源码级断言）', () => {
+    const source = readFileSync(CLIENT, 'utf8');
+    assert.ok(source.includes('/dsh-doctor/api/report'), '必须从宿主路由取数');
+    assert.ok(source.includes('dsh-doctor check'), '取不到数时必须给出可复制的 CLI 命令');
+    assert.ok(source.includes('重新扫描'), '页面必须有重新扫描入口');
+    assert.ok(source.includes('无法取证'), '页面要能展示 unknown 这一级');
 });
 
 test('package.json：client 声明与 exports 齐全', () => {
