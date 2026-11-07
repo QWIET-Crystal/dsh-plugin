@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.5.5 — 2026-11-07
+
+第三轮红队（CLI 参数 / 环境变量）里由主控侧修掉的 5 条。
+
+### 修复
+
+- **脱敏把枚举洗掉（高）**：`USERNAME=fault` 时 `level:'fault'` 被替换成 `<user>`，真故障在报告里变成「全绿」而 exitCode 仍是 2。修：`level` / `verdict` / `schemaVersion` / `exitCode` 不参与脱敏（id 仍脱敏，里面可能嵌路径）。
+- **本地病例投毒（高）**：往本地病例库放同名病例，`check` 会把里面的 `calc.exe` 当「复制即用」输出。修：**只有共享库的病例给命令**，本地草稿一律不给。
+- **junction 逃逸（中）**：`safety.isInside` 用非 native 的 `realpathSync`，Windows 下不解析 junction，可读写 `DSH_HOME` 之外。修：改用 `realpathSync.native`。
+- **cases --json 不脱敏（中）**：`cases <id> --json` 与 `--search --json` 原样输出令牌与家目录。修：输出前脱敏。
+- **--deep-sessions 聚合炸弹（中）**：200 个会话 × 4 帧 × 8MB = 6.4GB / 8.1 秒。修：整轮解压总预算 64MB，超了停并标 `truncated`。
+
+### 测试
+
+- 155 → **159 项 / 24 个文件**。
+
 ## 0.5.4 — 2026-11-07
 
 第三轮红队：工具型攻击者（带 shell 的 DeepSeek 边界角色）在沙箱里跑出 10 条真攻破。

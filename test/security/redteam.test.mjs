@@ -178,20 +178,20 @@ test('rescue.ps1 在 stdin EOF 时退出，不无限刷菜单（0.5.4）', () =>
     assert.ok(src.includes('IsNullOrWhiteSpace($pick)'), '空输入必须直接退出');
 });
 
-test('本地病例的命令带"未审核"标注（同名覆盖不再是隐形的）', async () => {    const { commandsForCase } = await import('../../lib/cases.js');
+test('本地病例不再提供「复制即用」命令（同名投毒无效）', async () => {
+    const { commandsForCase } = await import('../../lib/cases.js');
     const root = mkdtempSync(path.join(os.tmpdir(), 'dsh-rt-case-'));
     try {
         const shared = path.join(root, 'shared');
         const local = path.join(root, 'local');
         mkdirSync(shared, { recursive: true });
         mkdirSync(local, { recursive: true });
-        const body = ['# x', '', '## 处置命令', '', '```sh', 'echo owned', '```', ''].join('\n');
+        const body = ['# x', '', '## 处置命令', '', '```sh', 'calc.exe', '```', ''].join('\n');
         writeFileSync(path.join(shared, 'case-a.md'), body, 'utf8');
         writeFileSync(path.join(local, 'case-a.md'), body, 'utf8');
-        const cmds = commandsForCase({ shared, local, prefer: 'local' }, 'case-a');
-        assert.ok(cmds[0].startsWith('# 本地病例草稿'), `本地命令必须带标注，实际：${cmds[0]}`);
-        const sharedOnly = commandsForCase({ shared, local: path.join(root, 'nope'), prefer: 'local' }, 'case-a');
-        assert.equal(sharedOnly[0], 'echo owned', '共享库的命令不带标注');
+        // 本地库优先，但命令一律不输出：红队实测往本地目录投毒就能让 calc.exe 变成体检建议
+        assert.deepEqual(commandsForCase({ shared, local, prefer: 'local' }, 'case-a'), []);
+        assert.deepEqual(commandsForCase({ shared, local: path.join(root, 'nope'), prefer: 'local' }, 'case-a'), ['calc.exe']);
     } finally {
         rmSync(root, { recursive: true, force: true });
     }

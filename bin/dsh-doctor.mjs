@@ -294,7 +294,7 @@ async function main() {
         const kw = flagValue('--search');
         if (kw) {
             const result = searchCases(sources, kw, { limit: Number(flagValue('--limit')) || 20 });
-            if (json) out(result);
+            if (json) out(redactPayload(result, identity));
             else console.log(renderCaseSearch(result, identity));
             return result.hits.length > 0 ? 0 : 1;
         }
@@ -310,7 +310,7 @@ async function main() {
             console.error(`读不到案例 ${id}（本地库与共享库都没有）`);
             return 2;
         }
-        if (json) out({ source: hit.source, dir: redact(hit.dir, identity), text: hit.text });
+        if (json) out({ source: hit.source, dir: redact(hit.dir, identity), text: redact(hit.text, identity) });
         else console.log(`> 来源：${hit.source === 'local' ? '本地库' : '共享库'}\n\n` + redact(hit.text, identity));
         return 0;
     }
