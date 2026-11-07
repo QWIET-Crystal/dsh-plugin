@@ -21,11 +21,11 @@
 
 ### 新增
 
-- `test/security/redteam.test.mjs` 加 4 条回归（Host、junction、home 去重、runs 预算）。
+- `test/security/redteam.test.mjs` 加 5 条回归（Host、junction、home 去重、runs 预算、contribute 代码来源）。
 
 ### 测试
 
-- 150 → **154 项 / 24 个文件**；`tools/attack-probe.mjs` 全绿。
+- 150 → **155 项 / 24 个文件**；`tools/attack-probe.mjs` 全绿。
 
 ## 0.5.2 — 2026-11-07
 
