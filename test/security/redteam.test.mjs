@@ -6,13 +6,17 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import os from 'node:os';
 import path from 'node:path';
 
 import { runCheck } from '../../lib/check.js';
 import { scanDesktopLogs } from '../../lib/report.js';
+import { candidateHomes } from '../../lib/detect.js';
+import { listSessionFiles, scanSessions } from '../../lib/sessions.js';
+import { listRuns } from '../../lib/runs.js';
+import { createReportHandler } from '../../lib/http.js';
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 
@@ -115,8 +119,7 @@ test('--html 不覆盖非本工具生成的文件（第三条写路径）', asyn
     }
 });
 
-test('本地病例的命令带"未审核"标注（同名覆盖不再是隐形的）', async () => {
-    const { commandsForCase } = await import('../../lib/cases.js');
+test('本地病例的命令带"未审核"标注（同名覆盖不再是隐形的）', async () => {    const { commandsForCase } = await import('../../lib/cases.js');
     const root = mkdtempSync(path.join(os.tmpdir(), 'dsh-rt-case-'));
     try {
         const shared = path.join(root, 'shared');
@@ -133,4 +136,82 @@ test('本地病例的命令带"未审核"标注（同名覆盖不再是隐形的
     } finally {
         rmSync(root, { recursive: true, force: true });
     }
+});
+
+test('junction 逃逸：会话根里指向根外的链接必须跳过并计数（0.5.3）', () => {
+    const root = mkdtempSync(path.join(os.tmpdir(), 'dsh-rt-junc-'));
+    const outside = mkdtempSync(path.join(os.tmpdir(), 'dsh-rt-out-'));
+    try {
+        mkdirSync(path.join(outside, 'session-esc'), { recursive: true });
+        writeFileSync(path.join(outside, 'session-esc', 'session.v4.jsonl.zstd'), 'x', 'utf8');
+        try {
+            symlinkSync(outside, path.join(root, '--ESC--'), 'junction');
+        } catch {
+            return; // 平台不支持 junction（非 Windows）就跳过
+        }
+        const listed = listSessionFiles(root);
+        assert.equal(listed.escaped, 1, '指向根外的链接必须被跳过并计数');
+        assert.equal(listed.files.length, 0, '根外的会话文件不能被列出来');
+        const scan = scanSessions({ dir: root });
+        assert.equal(scan.escaped, 1);
+        assert.ok(scan.errors.some((e) => e.includes('软链')), '跳过不是"没问题"，必须说出来');
+    } finally {
+        rmSync(root, { recursive: true, force: true });
+        rmSync(outside, { recursive: true, force: true });
+    }
+});
+
+test('同一个 DSH_HOME 的两种写法只扫一次（否则结论重复计数）', () => {
+    const env = {
+        DSH_HOME: 'C:/lab/home/.dsh',
+        USERPROFILE: 'C:\\lab\\home',
+        LOCALAPPDATA: 'C:\\lab\\appdata-local',
+    };
+    const homes = candidateHomes(env);
+    const normalized = homes.map((h) => path.resolve(h).toLowerCase());
+    assert.equal(new Set(normalized).size, normalized.length, `候选 home 有重复：${homes.join(' | ')}`);
+    assert.equal(normalized.filter((h) => h.endsWith(`${path.sep}.dsh`)).length, 1, '同一个 .dsh 只能出现一次');
+});
+
+test('Host 头：非回环 Host 一律 403（DNS rebinding 挡在门口）', async () => {
+    const dir = mkdtempSync(path.join(os.tmpdir(), 'dsh-rt-host-'));
+    try {
+        const handler = createReportHandler({ runsDir: dir, checkOptions: { saveRuns: false, sessionScan: false } });
+        const call = async (host) => {
+            const res = { code: 0, body: '' };
+            res.writeHead = (c) => { res.code = c; };
+            res.end = (b) => { res.body = String(b || ''); };
+            await handler({ method: 'GET', url: '/dsh-doctor/api/report', headers: host ? { host } : {} }, res);
+            return res;
+        };
+        const evil = await call('evil.example');
+        assert.equal(evil.code, 403);
+        assert.ok(evil.body.includes('bad-host'));
+        assert.equal((await call('127.0.0.1:3080')).code, 200);
+        assert.equal((await call('[::1]:3080')).code, 200);
+        assert.equal((await call('localhost:43120')).code, 200);
+    } finally {
+        rmSync(dir, { recursive: true, force: true });
+    }
+});
+
+test('历史列表：超大 run 只给元数据（不再整份 JSON.parse）', () => {    const dir = mkdtempSync(path.join(os.tmpdir(), 'dsh-rt-runs-'));
+    try {
+        const name = '2026-01-01T00-00-00-000Z-deadbeef.json';
+        writeFileSync(path.join(dir, name), JSON.stringify({ generatedAt: '2026-01-01T00:00:00.000Z', pad: 'x'.repeat(1024 * 1024) }), 'utf8');
+        const rows = listRuns(dir, 30);
+        assert.equal(rows.length, 1);
+        assert.equal(rows[0].truncated, true, '超过单文件上限应标记 truncated');
+        assert.equal(rows[0].generatedAt, null, '没解析就不该有摘要');
+        assert.ok(rows[0].bytes > 1024 * 1024);
+    } finally {
+        rmSync(dir, { recursive: true, force: true });
+    }
+});
+
+test('contribute 不执行 --repo 里的脚本（供应链口子，0.5.3）', () => {
+    const src = readFileSync(path.join(ROOT, 'tools', 'contribute.mjs'), 'utf8');
+    assert.equal(/path\.join\(repo,\s*['"]tools['"]/.test(src), false, '--repo 只能当数据，不能当代码来源');
+    assert.ok(src.includes("path.join(OWN_TOOLS, 'index-cases.mjs')"), '索引要跑本包自带的脚本');
+    assert.ok(src.includes("path.join(OWN_TOOLS, 'lint-cases.mjs')"), '校验要跑本包自带的脚本');
 });

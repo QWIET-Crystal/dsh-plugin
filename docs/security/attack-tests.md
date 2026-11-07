@@ -5,6 +5,45 @@
 
 ---
 
+## 2026-11-07 · 第二轮：Kimi / GLM 盲测 + 主控逐条复现（0.5.2 → 0.5.3）
+
+### 这轮和上一轮的区别
+
+- SiliconFlow 余额不足（HTTP 402），改走**各自官方 API 直连**：Moonshot `kimi-k2.6`、Z.ai `glm-5.3`。
+- 只给源码（`lib/*.js` + `bin` + `rescue.ps1`），**不给 SECURITY.md**（盲测）。
+- 它们只有文本通道，所以是**它们出攻击、主控在沙箱里原样执行**（方案里的降级路径）。
+- 沙箱重建在 0.5.2 代码上：`_securitylab/run-20261107b`（假 HOME / 假 APPDATA / 独立实例 `:3999` / 审计包装器）。
+- 工具型 DeepSeek 攻击者这轮没在预算内跑完，**不计分**；上一轮 DeepSeek 的结论保留在 0.5.2 那一节。
+
+### 结果：主控复现 5 条真跑通，全部已修
+
+| # | 攻击 | 提出方 | 自评 | 主控实测 | 处置 |
+| --- | --- | --- | --- | --- | --- |
+| 1 | **HTTP 不校验 `Host`**：DNS rebinding 可读全量历史 / 触发体检 | 承接上一轮 boundary 未复现项 | 中 | 伪造 `Host: evil.example` 的 GET 与 POST 都 **200**（POST 带公开常量头还会真跑一轮） | ✅ 只放行回环 Host，否则 403 `bad-host` |
+| 2 | **会话扫描跟随 junction 逃出 `DSH_HOME`** | 主控 | 中 | `sessions/` 放一个指向根外的 junction，扫描器读到根外会话并计入 | ✅ `realpathSync.native` 白名单（普通 `realpathSync` 不解析 junction），逃出计数并进 `errors` |
+| 3 | **同一 home 两种写法 → 结论重复计数** | 主控 | 低 | `DSH_HOME=D:/…/.dsh` vs `D:\…\.dsh`：7 条 → 8 条、warn 3 → 4 | ✅ 候选 home 按规范化绝对路径去重 |
+| 4 | **GET 解析放大**：每个历史文件整份 `JSON.parse` | Kimi 提到放大、主控实测 | 中 | 10×2MB 历史：**45ms**（全量解析，0 条 truncated）→ 修后 **1ms**（10 条 truncated） | ✅ 单文件 >512KB 只给元数据、整轮预算 4MB、单份 >8MB 不解析 |
+| 5 | **`contribute --repo` 执行该仓库里的 `tools/index-cases.mjs`** | Kimi（擦边） | 中 | 代码路径确认：`node <repo>/tools/index-cases.mjs`；本沙箱禁带管道子进程，marker 没落地，**沙箱外会执行** | ✅ 索引/校验改跑**本包自带**脚本，`--repo` 只当数据 |
+
+### 被证伪的（模型声称、主控实测不成立）
+
+| 声称 | 实测 |
+| --- | --- |
+| `?run=..\..\Windows\win.ini` 穿越（"只拦 `/`"） | 四种编码（`..%2F`、`..%5C`、`%2e%2e`、裸 `..`）全 **404 `bad-name`**；`readRun` 同时拦 `/`、`\`、`..` |
+| 500KB 日志行触发 `ERR_PNPM_MINIMUM_RELEASE_AGE_VIOLATION` ReDoS | **510ms**（含 Node 启动）；该正则无无界量词，且单行已采样 2KB |
+| `repair.template` 可 XSS | 客户端只把它写进剪贴板，不进 HTML（文本节点，框架默认转义） |
+| `--html --force` 覆盖任意文件 | 非本工具生成的报告默认拒绝；`--force` 是用户显式开关（设计如此） |
+| `kit --to` 写任意目录 | 设计如此：目录由用户指定 |
+| 会话 zstd 炸弹 | 0.5.2 已有单帧 8MB / 总量 32MB 上限，未复现 |
+
+### 结论
+
+- 上一轮修的 8 条没有回潮（`tools/attack-probe.mjs` 全绿，154 项测试全过）。
+- 这一轮的真问题集中在**"信任边界"与"协议边界"**：Host 头、junction、`--repo` 代码来源——都不是"某个字段没过滤"，而是"把外部输入当成了可信上下文"。
+- 仍然不防的：同用户本地篡改（`kit.json`、`runs/`、环境变量）、局域网 IP 访问设置页（Host 只放行回环）、杀毒/多用户隔离。
+
+---
+
 ## 2026-11-07 · 红队轮（DeepSeek 双角色盲测，Kimi/GLM 待回）
 
 ### 沙箱怎么搭的（诚实说明）

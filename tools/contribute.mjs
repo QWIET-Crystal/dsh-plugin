@@ -153,14 +153,18 @@ function main() {
     writeFileSync(target, built.body, 'utf8');
     steps.push(`写入 ${path.relative(repo, target)}（${Buffer.byteLength(built.body)} 字节，已脱敏）`);
 
-    const index = run('node', [path.join(repo, 'tools', 'index-cases.mjs')], { cwd: repo });
+    // 0.5.3：索引/校验一律跑**本包自带的**脚本，只把 repo 当数据看。
+    // 原来跑的是 `--repo` 目录里的 tools/index-cases.mjs——指向一份刚 clone 下来的仓库时，
+    // 等于执行那个仓库里的代码（供应链口子）。
+    const OWN_TOOLS = import.meta.dirname;
+    const index = run('node', [path.join(OWN_TOOLS, 'index-cases.mjs'), casesDir], { cwd: repo });
     steps.push(index.ok ? '重建索引 OK' : `重建索引失败: ${index.stderr || index.stdout}`);
     if (!index.ok) {
         json({ ok: false, steps, reason: 'index-failed' });
         return 1;
     }
 
-    const lint = run('node', [path.join(repo, 'tools', 'lint-cases.mjs')], { cwd: repo });
+    const lint = run('node', [path.join(OWN_TOOLS, 'lint-cases.mjs'), casesDir], { cwd: repo });
     steps.push(lint.ok ? '机械检查通过' : `机械检查未通过:\n${lint.stdout}\n${lint.stderr}`);
     if (!lint.ok) {
         json({ ok: false, steps, reason: 'lint-failed' });

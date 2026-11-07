@@ -1,5 +1,32 @@
 # Changelog
 
+## 0.5.3 — 2026-11-07
+
+第二轮红队（Kimi-K2.6 / GLM-5.3 盲测 + 主控逐条复现；上一轮 DeepSeek 双角色见 0.5.2）。
+本轮**新增 4 条真跑通的边界问题**，全部有回归钉子。
+
+### 修复
+
+- **Host 头不校验（中）**：只比对公开常量 `x-dsh-doctor: 1` 不算"同源"——DNS rebinding 下
+  攻击者页面与服务同源，能自己带这个头并读回响应。实测伪造 `Host: evil.example` 的 GET/POST
+  都返回 200。修：Host 必须是回环名（127.0.0.1 / localhost / ::1），否则 403 `bad-host`。
+- **会话 reading 跟随 junction（中）**：`sessions/` 里一个指向根外的 junction 能让"只读自己的
+  DSH_HOME"变成读任意目录（实测扫到了根外的会话文件）。修：逐目录 `realpathSync.native`
+  白名单（普通 `realpathSync` 不解析 junction），逃出根的跳过并计数、出 `errors` 说明。
+- **同一 home 重复计数（低）**：`DSH_HOME` 写成 `D:/x/.dsh` 与 `D:\x\.dsh` 会被当成两个 home，
+  结论重复（实测 7 条 → 8 条、warn 3 → 4）。修：`candidateHomes` 按规范化路径去重。
+- **GET 解析放大（中）**：`listRuns` 对每个历史文件**整份 JSON.parse**，30 个 4MB 历史 ≈ 121MB
+  主线程解析。修：单文件超 512KB 只给元数据（`truncated: true`），整轮解析预算 4MB；
+  `?run=` / 最新一份超过 8MB 拒绝解析。
+
+### 新增
+
+- `test/security/redteam.test.mjs` 加 4 条回归（Host、junction、home 去重、runs 预算）。
+
+### 测试
+
+- 150 → **154 项 / 24 个文件**；`tools/attack-probe.mjs` 全绿。
+
 ## 0.5.2 — 2026-11-07
 
 红队实测后的加固（沙箱：`tools/security-lab.mjs`，19 条尝试 / 9 条真跑通）。

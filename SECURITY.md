@@ -1,4 +1,4 @@
-# 安全模型（dsh-doctor 0.5.1）
+# 安全模型（dsh-doctor 0.5.3）
 
 > 这份文档在 0.5.0 之前写的是"插件唯一职责是只读取证"——**那句话现在不准确了**。
 > 0.5.0 起有两套权限模型：**插件只读**，**急救包可以执行**。它们分开写、分开测。
@@ -42,6 +42,7 @@
 | **解压炸弹**：单帧可膨胀数万倍（实测 64 MB 全零 → 2 KB，32,467×） | 逐帧 `maxOutputLength: 8 MB`，**分配前**拦截；命中即整份放弃并记 `unknown` | `test/security/hardening.test.mjs` · 「解压炸弹：单帧超限整份放弃」「上限是分配前的」 |
 | 总量爆炸 | 累计解码上限 32 MB | 同上 |
 | 畸形/半帧（窗口从中间切） | 跳过窗口首段；坏帧计数，全坏则 `decode-failed` | `test/sessions.test.mjs` |
+| **junction / 软链逃逸**：`sessions/` 里放一个指向根外的链接 | 逐目录 `realpathSync.native` 比对 sessions 根（普通 `realpathSync` 在 Windows 上**不解析 junction**）；逃出根的跳过并计数、进 `errors` | `test/security/redteam.test.mjs` · 「junction 逃逸」 |
 | 深度嵌套 JSON | `JSON.parse` 失败的行直接跳过，不抛 | `test/security/hardening.test.mjs` · 「深度嵌套 JSON」 |
 | **隐私**：会话正文含用户对话 | 只输出数字（轮次/次数/占比），**原文不进报告、不进 `runs/`** | `test/sessions.test.mjs` · 「报告里不能出现会话原文」 |
 
@@ -52,6 +53,8 @@
 | 风险 | 处置 | 测试 |
 | --- | --- | --- |
 | **CSRF**：任意网页用简单请求打 POST | 必须带 `x-dsh-doctor: 1`；缺了返回 **403**。跨源自定义头会触发预检，而我们不回 CORS 头 | `test/security/hardening.test.mjs` · 「CSRF：裸 POST 403」 |
+| **DNS rebinding**：攻击者页面"同源"于 `127.0.0.1` | `Host` 必须是回环名（`127.0.0.1` / `localhost` / `::1`），否则 **403 `bad-host`**；GET 与 POST 同一道门 | `test/security/redteam.test.mjs` · 「Host 头」 |
+| **GET 放大**：30 个 4MB 历史 → 每次全量 `JSON.parse` 121MB | 单文件 > 512KB 只给元数据（`truncated: true`）、整轮解析预算 4MB、单份 > 8MB 不解析 | `test/security/redteam.test.mjs` · 「历史列表」 |
 | 刷盘 | 页面侧 2 秒节流（429）+ 单飞锁（同一时刻只跑一轮） | `test/http.test.mjs` |
 | 路径穿越读文件 | `?run=` 只接受纯文件名（含分隔符一律 `bad-name`） | `test/security/hardening.test.mjs` · 「路径穿越」 |
 | 跨源读数据 | 不设任何 CORS 头，浏览器默认拒绝读取 | `test/http.test.mjs` |
@@ -78,6 +81,7 @@
 | 越界写 | 只有两处写：本地案例库（`allowLocalCaseWrite`）、体检历史（`saveRuns`）；都可关 | `test/safety.test.mjs` |
 | 案例 id 穿越 | id 只允许安全字符；`readRun` / `case-promote` 拒绝分隔符 | `test/security/hardening.test.mjs` |
 | 写进别人的 home | 只写**当前宿主自己**的 `DSH_HOME` | `test/runs.test.mjs` |
+| 同一个 home 两种写法重复计数 | 候选 home 按**规范化绝对路径**去重（`D:/x/.dsh` 与 `D:\x\.dsh` 算一个） | `test/security/redteam.test.mjs` · 「同一个 DSH_HOME」 |
 
 ### 2.5 输出与脱敏
 
@@ -109,6 +113,7 @@
 
 ## 5. 已知局限
 
+- **HTTP 路由只接受回环 `Host`**：用局域网 IP 打开设置页时，这条路会 403（本插件只面向本机诊断）。
 - 会话只读**尾部**：很长会话中段的退化不会被看到（`--deep-sessions` 也只是放宽窗口，不是全量）。
 - 单帧 8 MB 上限是取舍：正常长消息（11 万字符 ≈ 300 KB）远低于它；超限的那份会话会记 `unknown`，不影响其它结论。
 - CSRF 头要求 0.5.1+ 的页面配合：**旧页面 + 新内核**会让"重新扫描"返回 403（设置页会提示升级）。
