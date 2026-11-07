@@ -49,7 +49,7 @@ Tested with DSH kernel `0.2.1-rc.2` / `0.2.1-rc.5`, Node >= 22.19.0 (24.20.0 on 
 | Tool | Purpose |
 | --- | --- |
 | `doctor_engines` | list every engine/instance: each `DSH_HOME`, every profile's bundles/deps/declared ports, npm & desktop versions, listening ports |
-| `doctor_check` | layered health check returning a **structured object** (`findings[]` with id / level / caseId / fix), rendered as Markdown too |
+| `doctor_check` | layered health check (ports / assembly / ABI / logs / **session events**) returning a **structured object** (`findings[]` with id / level / caseId / fix), rendered as Markdown too |
 | `doctor_runs` | read the health history: list recent runs, or read one full run |
 | `doctor_cases` | read **both** case libraries; index without args, one case by `id`, full-text search by `search` (AND across words, with matching snippets) |
 | `doctor_export_kit` | export the **rescue kit** for the day every host is down |
@@ -104,8 +104,9 @@ a double-clickable kit (`dsh-doctor kit --to <dir>`, or the `doctor_export_kit` 
 | `kit.json` | version / export time / plugin install path (the thin launcher uses it to find the newest code) |
 | `payload/` | built-in copy (still works after the plugin is uninstalled, but goes stale) |
 
-Five menu actions: health check + open report · start the web host (:3080) · start the desktop app · open the kit folder ·
-open the DSH config folder. It never edits config, deletes files, or runs anything invisible, and every run writes `run-<time>.log`.
+Seven menu actions: health check + open report · start the web host (:3080) · start the desktop app · open the kit folder ·
+open the DSH config folder · **6 one-click repair** · **7 roll back the last repair** (see the section above).
+Apart from 6/7 it never edits config, deletes files, or runs anything invisible, and every run writes `run-<time>.log`.
 
 Runtime detection cascades through five levels, **each recorded in the log and report**:
 `DSH_DOCTOR_NODE` → `node` on `PATH` → `%APPDATA%\npm\node.exe` → the optional portable-node package →
@@ -195,7 +196,7 @@ sidecar recording the original path. Without Node it degrades to a built-in mini
 ## Tests and the CLI
 
 ```bash
-node --test test/            # 19 files / 115 checks
+node --test test/            # 21 files / 131 checks
 node test/units.test.mjs     # run a single file directly when the sandbox blocks the test runner
 node tools/lint-cases.mjs    # mechanical checks over the case library
 ```
