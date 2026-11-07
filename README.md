@@ -359,7 +359,7 @@ dsh-doctor contribute --from <file> --pr
 | 定位 | 运行期健康体检 + 案例库 | 诊断 + 修复 + 回滚 + 运行时自愈 | 插件发布前的核验标准 |
 | 多引擎发现 | ✅ 所有 DSH_HOME / profile / npm / 桌面端 | ❌ 单一环境 | ❌ 面向单个插件包 |
 | 案例库 | ✅ 本地+共享两库、脱敏、linter、CI | ❌ | ❌ |
-| 修复能力 | ❌（只读；只给可复制命令，不动手） | ✅ journal + LIFO 回滚 | ❌ |
+| 修复能力 | ⚠️ 分面：**插件只读**（给可复制命令），**急救包可修**（A 类自动 / B 类逐条确认 / C 类只指路，带备份与回滚） | ✅ journal + LIFO 回滚 | ❌ |
 | 离线入口 | ✅ `bin/dsh-doctor.mjs` | ✅ CLI（postinstall 装到全局 PATH） | ✅ bin CLI |
 | 体检历史 | ✅ `runs/`（内容去重 + 保留上限） | ❌ | ❌ |
 | 测试 | ✅ 131 项 / 21 个文件 | ❌ 无 | ✅ `tests/*.mjs` |
@@ -371,7 +371,8 @@ dsh-doctor contribute --from <file> --pr
 1. **离线入口**（jorinyang）—— 插件活在宿主里，宿主挂了就等于没有插件；`bin/dsh-doctor.mjs` 只要有 Node 就能体检。
 2. **门禁前移**（PerryLink）—— 新增 `.github/workflows/ci.yml`：每次 push/PR 跑全部测试 + 病例 lint + 索引一致性。
 3. **包名与安装渠道写清楚**（PerryLink）—— 避免用户装到同名的无关包。
-4. **刻意不学**：postinstall 改全局 PATH（安装即执行属于供应链面）；也不做自动修复（会破坏"零执行面"承诺，列 roadmap 另议）。
+4. **刻意不学**：postinstall 改全局 PATH（安装即执行属于供应链面）。
+   **自动修复只放在急救包里**（用户主动双击的独立产物），插件本身永远保持零执行面——两套权限模型分开写，测试也分开守。
 
 ## 许可
 
