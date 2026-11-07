@@ -1,5 +1,30 @@
 # Changelog
 
+## 0.5.2 — 2026-11-07
+
+红队实测后的加固（沙箱：`tools/security-lab.mjs`，19 条尝试 / 9 条真跑通）。
+
+### 修复
+
+- **ReDoS（严重）**：单行 1.2MB 日志让主线程卡 **94 秒**。修：单行采样 2KB + 去掉无界 `[^
+]*` 间隙，现 **3ms**。
+- **令牌外泄（高）**：`check --json` 与 HTTP 响应返回**未脱敏** payload（`ghp_`/`glpat-`/`xoxb-`）。修：`runCheck` 返回前脱敏，并补 4 类令牌规则。
+- **日志注入（高）**：任意一行含 `host outbound proxy policy installed` 就能擦掉之前的故障（1→0）。修：只认结构化启动事件 `"event":"shell-load.start"`。
+- **静默漏报（高）**：会话帧里内嵌 4 字节 magic 可让内容被丢弃且不报警。修：坏帧 > 0 时出 `SESSION.SCAN.UNAVAILABLE`（unknown）。
+- **本地病例命令（高）**：同名覆盖可把任意命令变成「复制即用」。修：本地来源强制加「未审核」标注。
+- **模板注入（高）**：`repair.template` 会带攻击者 Markdown。修：标题去换行与 Markdown 控制符。
+- **报告放大（中）**：3 万条结论 → 27MB。修：结论上限 200 + `REPORT.FINDINGS.TRUNCATED`。
+- **--html 覆写（高）**：可覆盖任意文件。修：非本工具生成的报告拒绝覆盖（`--force` 放行）。
+
+### 新增
+
+- `tools/security-lab.mjs`：多模型红队沙箱（假 HOME / 假日志 / 审计包装器）。
+- `test/security/redteam.test.mjs`：6 条回归钉子。
+
+### 测试
+
+- 144 → **150 项 / 24 个文件**。
+
 ## 0.5.1 — 2026-11-07
 
 安全加固 + 贡献傻瓜化（对应 SECURITY.md 重写）。

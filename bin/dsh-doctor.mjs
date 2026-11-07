@@ -20,13 +20,13 @@
  */
 
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 
 import { runCheck } from '../lib/check.js';
 import { listCases, markPromoted, readCase, renderCaseIndex, renderCaseSearch, resolveCaseSources, searchCases } from '../lib/cases.js';
 import { discover } from '../lib/detect.js';
-import { renderHtml } from '../lib/html.js';
+import { canOverwriteHtmlReport, renderHtml } from '../lib/html.js';
 import { redactPayload, renderEngines, renderPayload } from '../lib/report.js';
 import { listRuns, readRun, renderRuns, resolveRunsDir } from '../lib/runs.js';
 import { localIdentity, redact } from '../lib/safety.js';
@@ -105,7 +105,14 @@ async function main() {
         const htmlPath = flagValue('--html');
         const quiet = flags.has('--quiet');
         if (htmlPath) {
-            writeFileSync(path.resolve(htmlPath), renderHtml(redactPayload(payload), {}), 'utf8');
+            const target = path.resolve(htmlPath);
+            // --html 是"第三条写路径"：只覆盖本工具生成的报告（守卫在 lib/html.js 里，可单测）
+            const verdict = canOverwriteHtmlReport(target, { force: flags.has('--force') });
+            if (!verdict.ok) {
+                console.error(`[dsh-doctor] 拒绝覆盖：${target} 看起来不是本工具生成的报告（确实要覆盖请加 --force）`);
+                return 2;
+            }
+            writeFileSync(target, renderHtml(redactPayload(payload), {}), 'utf8');
             if (!json && !quiet) console.error(`[dsh-doctor] HTML 报告已写入 ${path.resolve(htmlPath)}`);
         }
         if (json) out(payload);
