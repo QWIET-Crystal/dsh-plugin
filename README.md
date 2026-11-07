@@ -362,7 +362,7 @@ dsh-doctor contribute --from <file> --pr
 | 修复能力 | ❌（只读；只给可复制命令，不动手） | ✅ journal + LIFO 回滚 | ❌ |
 | 离线入口 | ✅ `bin/dsh-doctor.mjs` | ✅ CLI（postinstall 装到全局 PATH） | ✅ bin CLI |
 | 体检历史 | ✅ `runs/`（内容去重 + 保留上限） | ❌ | ❌ |
-| 测试 | ✅ 70+ 项 / 12 个文件 | ❌ 无 | ✅ `tests/*.mjs` |
+| 测试 | ✅ 131 项 / 21 个文件 | ❌ 无 | ✅ `tests/*.mjs` |
 | 供应链门禁 | CI + 零执行面静态断言 | ⚠️ postinstall 会 `execSync` 并写全局 bin | ✅ Scorecard / actions / dependabot |
 | 运行时依赖 | 零（客户端只 `require('react')`） | 零 | 零 |
 
