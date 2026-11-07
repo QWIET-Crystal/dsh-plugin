@@ -20,7 +20,7 @@
  */
 
 import { execFileSync } from 'node:child_process';
-import { writeFileSync } from 'node:fs';
+import { mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 
 import { runCheck } from '../lib/check.js';
@@ -66,6 +66,7 @@ async function main() {
                 '  dsh-doctor runs    [name] [--json]      体检历史：不带 name 列清单，给 name 读单条',
                 '  dsh-doctor where   [--json]             宿主包解析到哪一份（工具没反应时先看它）',
                 '  dsh-doctor cases   [id] [--json]        两库索引；给 id 则读单条',
+                '  dsh-doctor case-from <finding-id>       从一条体检结论直接起草病例（--dry-run 只看不写）',
                 '  dsh-doctor case-promote <本地id> <共享id>  合入后在本地病例里留一行 promoted 标记',
                 '  dsh-doctor contribute --from <file> [--pr] [--dry-run]',
                 '',
@@ -210,6 +211,54 @@ async function main() {
         const runs = listRuns(dir, 30);
         if (json) out({ dir: redact(dir, identity), runs });
         else console.log(renderRuns(runs, dir, (p) => redact(p, identity)));
+        return 0;
+    }
+
+    if (cmd === 'case-from') {
+        // 从一条体检结论直接起草病例：症状/判定签名/处置命令都已经在 finding 里
+        const id = positional[0];
+        if (!id) {
+            console.error('用法：dsh-doctor case-from <finding-id> [--dry-run] [--json]');
+            console.error('   例：dsh-doctor case-from SESSION.REPETITION.COLLAPSE');
+            return 2;
+        }
+        const payload = await runCheck({
+            env: process.env,
+            deep: !flags.has('--no-deep'),
+            saveRuns: false,
+            sessionScan: !flags.has('--no-sessions'),
+            deepSessions: flags.has('--deep-sessions'),
+        });
+        const finding = payload.findings.find((f) => f.id === id);
+        if (!finding) {
+            console.error(`这次体检里没有 ${id}。先跑 dsh-doctor check 看看现在有哪些结论（id 都在里面）。`);
+            return 2;
+        }
+        const { draftCaseFromFinding } = await import('../lib/case-draft.js');
+        const draft = draftCaseFromFinding(finding, { generatedAt: payload.generatedAt });
+        const sources = resolveCaseSources({}, process.env, PACKAGE_ROOT);
+        const target = path.join(sources.local, draft.filename);
+        if (json) {
+            out({ ok: true, id: draft.id, path: flags.has('--dry-run') ? null : redact(target, identity), markdown: draft.markdown });
+            return 0;
+        }
+        if (flags.has('--dry-run')) {
+            console.log(draft.markdown);
+            console.log(`\n（预览完毕。去掉 --dry-run 就会写到 ${redact(sources.local, identity)}）`);
+            return 0;
+        }
+        try {
+            mkdirSync(sources.local, { recursive: true });
+            writeFileSync(target, draft.markdown, 'utf8');
+        } catch (e) {
+            console.error(`写不进本地案例库：${e && e.message}`);
+            return 2;
+        }
+        console.log(`已起草：${redact(target, identity)}`);
+        console.log('');
+        console.log('接下来只差两步（不用手抄）：');
+        console.log('  1) 打开它，把「根因」「处置与结果」「验证」三节补成实话');
+        console.log(`  2) 合进共享库：dsh-doctor case-promote ${draft.id} <共享id>，再把文件放进 docs/cases/ 提 PR`);
         return 0;
     }
 

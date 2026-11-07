@@ -456,6 +456,37 @@ function Invoke-Action {
     return $verified
 }
 
+function Show-EntryDiff {
+    # 只读预览：告诉用户"会往哪一行插什么"，别的什么都不做
+    param($Action)
+    $file = $Action.params.file
+    $entryId = $Action.params.entryId
+    if (-not (Test-Path -LiteralPath $file)) {
+        Write-Host ("    （文件不存在，这个动作会被跳过：" + $file + "）") -ForegroundColor DarkGray
+        return
+    }
+    $lines = @(Get-Content -LiteralPath $file -Encoding UTF8)
+    $pattern = '^\s*-\s*id:\s*[''"]?' + [regex]::Escape($entryId) + '[''"]?\s*$'
+    $idx = -1
+    for ($i = 0; $i -lt $lines.Count; $i++) {
+        if ($lines[$i] -match $pattern) { $idx = $i; break }
+    }
+    if ($idx -lt 0) {
+        Write-Host "    （patch 里找不到这个条目，动作会被跳过）" -ForegroundColor DarkGray
+        return
+    }
+    Write-Host ("    文件：" + $file) -ForegroundColor DarkGray
+    $from = [Math]::Max(0, $idx - 2)
+    $to = [Math]::Min($lines.Count - 1, $idx + 2)
+    for ($k = $from; $k -le $to; $k++) {
+        Write-Host ("        " + $lines[$k]) -ForegroundColor DarkGray
+        if ($k -eq $idx) {
+            $indent = ($lines[$idx] -replace '^(\s*).*$', '$1')
+            Write-Host ("      + " + $indent + '  disabled: true') -ForegroundColor Yellow
+        }
+    }
+}
+
 function Invoke-Repair {
     Write-Log '===== 一键修复开始'
     $plan = Get-Plan
@@ -482,6 +513,8 @@ function Invoke-Repair {
             Write-Host ("`n[B] " + $a.title) -ForegroundColor Yellow
             Write-Host ("    原因：" + $a.why) -ForegroundColor DarkGray
             Write-Host '    这类改动会写文件（已自动备份），确认才执行。' -ForegroundColor DarkGray
+            # 动手前先把"会变成什么样"打出来：新手唯一能看懂的就是这两行差异
+            if ($a.type -eq 'disable-plugin-entry') { Show-EntryDiff -Action $a }
             $ans = Read-Host '    执行吗？(y/N)'
             if ($ans -match '^[yY]') {
                 if (Invoke-Action -Action $a -Stamp $stamp) { $done++ } else { $failed++ }

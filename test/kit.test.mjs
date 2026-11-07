@@ -122,3 +122,8 @@ test('急救包带修复执行器（动作白名单 + 备份 + 回滚），且�
         rmSync(dir, { recursive: true, force: true });
     }
 });
+
+test('源文件 rescue/rescue.ps1 也必须带 BOM（编辑工具会把它抹掉，真踩过）', () => {
+    const b = readFileSync(path.join(ROOT, 'rescue', 'rescue.ps1'));
+    assert.deepEqual([...b.subarray(0, 3)], [0xef, 0xbb, 0xbf], '源 .ps1 少了 UTF-8 BOM，PowerShell 5.1 会把中文按 ANSI 解成语法错误');
+});

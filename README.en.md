@@ -185,13 +185,20 @@ sidecar recording the original path. Without Node it degrades to a built-in mini
 
 ## Security model
 
+Two permission models, kept apart: the **plugin is read-only** (zero execution surface), the **rescue kit may execute**
+(closed action enum, per-item confirmation, backups).
+
 - **Zero execution surface**: `lib/` never imports `child_process`/`vm`, never uses `eval`/`new Function`; a static test enforces it.
 - **Two write points, both closable**: the local case library (`allowLocalCaseWrite`) and health history (`saveRuns`).
 - **Whitelisted reads**: every read goes through `safeReadText` (realpath-checked roots, byte caps, `truncated` flagged).
+- **Decompression bombs**: session frames are capped at **8 MB per frame, enforced before allocation** (zstd measured at 32,467× expansion).
+- **CSRF**: `POST /dsh-doctor/api/report` requires the `x-dsh-doctor: 1` header, which cross-origin requests cannot set.
 - **Redaction on output**: usernames, host names, home/temp dirs, `ghp_*`/`sk-*`/`Bearer`/URL userinfo are replaced with placeholders.
   Files written to disk and served over HTTP are **already redacted** (recursive, not a field whitelist).
 - **Anti-injection**: foreign text is neutralised before entering Markdown fences.
-- **Settings route**: `/dsh-doctor/api/report` is same-origin only (no CORS headers).
+- **Settings route**: same-origin only (no CORS headers).
+
+Threat model, per-surface handling and the test that pins each claim: [SECURITY.md](SECURITY.md).
 
 ## Tests and the CLI
 
@@ -206,6 +213,7 @@ dsh-doctor engines
 dsh-doctor check [--html <file>] [--quiet]
 dsh-doctor fix               # print copy-paste commands; never executes anything
 dsh-doctor plan [--json]     # emit the repair action list (the rescue kit executes it; this command does not)
+dsh-doctor case-from <finding-id> [--dry-run]   # draft a case straight from one finding (symptom / signature / fix auto-filled)
 dsh-doctor check --deep-sessions   # widen the session scan to every session touched in 24h
 dsh-doctor kit --to <dir>
 dsh-doctor runs [name]

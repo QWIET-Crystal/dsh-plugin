@@ -194,13 +194,19 @@ dsh-doctor kit --to "C:\Users\你\Desktop\DSH急救"   # 或让 Agent 调 doctor
 
 ## 安全模型（详见 [SECURITY.md](SECURITY.md)）
 
+两套权限模型分开：**插件只读**（零执行面），**急救包可执行**（枚举动作、逐条确认、带备份）。
+
 - **零执行面**：不 import `child_process` / `vm`，不用 `eval` / `new Function`；单测里有一条**静态断言**守着这条规矩。
 - **两个写点，都可关**：本地案例库（`allowLocalCaseWrite`）与体检历史（`saveRuns`）。除此之外没有第三条写路径。
 - **读文件必须落在白名单根内**：`realpath` 之后比对，`..` 穿越与指向外部的符号链接一律拒绝。
 - **有界读取**：只读常规文件、按字节截断、显式标注 `truncated`。
+- **解压炸弹**：会话帧逐帧校验，单帧上限 8 MB，**在分配之前**拦截（zstd 实测可膨胀 32,467×）。
+- **CSRF**：`POST /dsh-doctor/api/report` 必须带 `x-dsh-doctor: 1`，跨源请求带不了这个头。
 - **输出脱敏**：用户名、主机名、用户主目录、临时目录、`ghp_*`/`sk-*`/`Bearer`/URL userinfo 全部替换为占位符。
 - **反注入**：外来文本进 Markdown 围栏前先中和反引号，日志内容无法逃出围栏变成"文档指令"。
-- **设置页路由**：`/dsh-doctor/api/report` 只允许同源访问（不设 CORS 头），返回的是**落盘前已脱敏**的内容。
+- **设置页路由**：只允许同源访问（不设 CORS 头），返回的是**落盘前已脱敏**的内容。
+
+威胁模型、逐条攻击面与对应测试名见 [SECURITY.md](SECURITY.md)。
 
 ## 两个案例库（本地 + 共享）
 
@@ -341,6 +347,7 @@ dsh-doctor check          # 分层体检；退出码 0 全绿 / 1 注意 / 2 故
 dsh-doctor check --html <file>   # 额外生成自包含 HTML 报告
 dsh-doctor fix            # 只输出「照抄即可」的修理清单（**不执行**）
 dsh-doctor plan [--json]  # 输出「修复计划」动作清单（由急救包执行；本命令不动手）
+dsh-doctor case-from <finding-id> [--dry-run]   # 从一条体检结论直接起草病例（症状/判定签名/处置命令自动填）
 dsh-doctor check --deep-sessions   # 会话扫描放宽到 24 小时内所有会话
 dsh-doctor kit --to <目录> # 导出急救包（双击即用）
 dsh-doctor runs [name]    # 体检历史：列最近若干条，或读某一条的完整 JSON
