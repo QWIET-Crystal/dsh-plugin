@@ -20,7 +20,7 @@
  */
 
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 
 import { runCheck } from '../lib/check.js';
@@ -192,7 +192,12 @@ async function main() {
             return 2;
         }
         const { exportKit } = await import('../lib/kit.js');
-        const r = exportKit(path.resolve(to), { packageRoot: PACKAGE_ROOT });
+        const targetDir = path.resolve(to);
+        const r = exportKit(targetDir, { packageRoot: PACKAGE_ROOT, force: flags.has('--force') });
+        if (!r.ok && r.reason === 'dir-not-empty') {
+            console.error(`[dsh-doctor] 目标目录非空：${targetDir}（确实要覆盖请加 --force）`);
+            return 2;
+        }
         if (json) out(r);
         else {
             console.log(`急救包已导出到 ${r.dir}`);

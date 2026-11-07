@@ -1,4 +1,4 @@
-# 安全模型（dsh-doctor 0.5.3）
+# 安全模型（dsh-doctor 0.5.4）
 
 > 这份文档在 0.5.0 之前写的是"插件唯一职责是只读取证"——**那句话现在不准确了**。
 > 0.5.0 起有两套权限模型：**插件只读**，**急救包可以执行**。它们分开写、分开测。
@@ -59,6 +59,7 @@
 | 路径穿越读文件 | `?run=` 只接受纯文件名（含分隔符一律 `bad-name`） | `test/security/hardening.test.mjs` · 「路径穿越」 |
 | 跨源读数据 | 不设任何 CORS 头，浏览器默认拒绝读取 | `test/http.test.mjs` |
 | 回显 | 返回的是**落盘前已脱敏**的内容 | `test/redact.test.mjs` |
+| **历史读取跟链接**：`runs/` 里放硬链接 / 符号链接指向根外 | `realpathSync.native` 比对 runs 根；**硬链接**（同 inode 的第二个目录项，realpath 看不出来）看 `nlink > 1`，一律拒 `linked-file` | `test/security/redteam.test.mjs` · 「硬链接」 |
 
 ### 2.3 修复执行面（急救包 0.5.0 新增）
 
@@ -73,6 +74,8 @@
 | 计划被篡改 | 计划在**内存里**生成并立即执行，不落盘 | 设计约束（无临时文件） |
 | 提权 | 急救包**不提权**；遇到需要管理员的动作只打印命令 | `rescue/rescue.ps1` 无 `RunAs` |
 | 编码陷阱 | `.cmd` 纯 ASCII、`.ps1` 强制 UTF-8 BOM（有测试钉着源文件） | `test/kit.test.mjs` · 「源文件也必须带 BOM」 |
+| **导出静默覆盖**：`kit --to` 顶掉目标目录里已有的 `急救.cmd`/`rescue.ps1`/`kit.json` | 目标非空默认拒绝（`dir-not-empty`）；已有我们导出的 `kit.json` 时仍幂等；要覆盖请显式 `--force` | `test/kit.test.mjs` · 「重复导出幂等」+ `test/security/redteam.test.mjs` · 「kit --to」 |
+| **非交互空转**：stdin 到 EOF 后 `Read-Host` 返回空，主循环无限刷菜单 | 空输入直接退出（实测原来一次能刷 23MB 输出） | `test/security/redteam.test.mjs` · 「rescue.ps1…EOF」 |
 
 ### 2.4 案例库与两个写点
 
@@ -80,6 +83,7 @@
 | --- | --- | --- |
 | 越界写 | 只有两处写：本地案例库（`allowLocalCaseWrite`）、体检历史（`saveRuns`）；都可关 | `test/safety.test.mjs` |
 | 案例 id 穿越 | id 只允许安全字符；`readRun` / `case-promote` 拒绝分隔符 | `test/security/hardening.test.mjs` |
+| **`contribute --id` 穿越写**：`--id ../../..` 把文件写出 `--repo` | id 走 `isSafeCaseId`（与本地病例同一白名单），落点必须在 `docs/cases` 里 | `test/security/redteam.test.mjs` · 「contribute --id」 |
 | 写进别人的 home | 只写**当前宿主自己**的 `DSH_HOME` | `test/runs.test.mjs` |
 | 同一个 home 两种写法重复计数 | 候选 home 按**规范化绝对路径**去重（`D:/x/.dsh` 与 `D:\x\.dsh` 算一个） | `test/security/redteam.test.mjs` · 「同一个 DSH_HOME」 |
 
@@ -118,6 +122,11 @@
 - 单帧 8 MB 上限是取舍：正常长消息（11 万字符 ≈ 300 KB）远低于它；超限的那份会话会记 `unknown`，不影响其它结论。
 - CSRF 头要求 0.5.1+ 的页面配合：**旧页面 + 新内核**会让"重新扫描"返回 403（设置页会提示升级）。
 - 急救包的备份不含"服务启动"这类无文件动作（回滚时只会还原文件）。
+- **急救包目录必须由用户自己控制**：`kit.json` 的 `pluginRoot`、`DSH_DOCTOR_NODE` 都只做"存在性"检查
+  （没有签名/哈希）。同用户改动 = 非目标，但**链路一步即触发**（改一行 JSON → 菜单 1 执行攻击者的 `bin/dsh-doctor.mjs`）。
+  红队实测已写进 `docs/security/attack-tests.md`，不要把急救包放在共享/可被他人写的目录。
+- **`DSH_HOME` 就是读写根**：插件按进程环境变量定位 home。能控制进程环境的实体就控制了写点与脱敏身份——
+  这条不在"网页/恶意文件"威胁模型内，但部署时值得知道。
 
 ---
 

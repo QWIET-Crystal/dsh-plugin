@@ -5,6 +5,41 @@
 
 ---
 
+## 2026-11-07 · 第三轮：工具型攻击者（DeepSeek 边界角色，带 shell）
+
+这一轮换了打法：攻击者**真的在沙箱里执行**（`ops_bash` + 自造样本），不是只出主意。
+目标目录 `_securitylab/run-20261107b`，31 条命令审计，报告 `findings/deepseek-boundary.md`。
+
+### 10 条尝试，10 条真跑通（5 条本轮修掉）
+
+| # | 攻击 | 自评 | 实测 | 处置 |
+| --- | --- | --- | --- | --- |
+| 1 | **runs/ 硬链接 → 无鉴权 HTTP 任意读** | 高 | `runs\loot.json` 硬链到根外文件，`GET ?run=loot` 返回 200 + 根外全文 | ✅ 修：`realpathSync.native` 比对 runs 根 + `nlink > 1` 拒 `linked-file` |
+| 2 | **HTTP 零同源**：伪造 `Origin`/`Host`/`Sec-Fetch-Site` | 中 | 伪造头 GET 200（4MB）/ POST 200 并真跑一轮 | ✅ 部分修：`Host` 只放行回环（0.5.3）；`Origin`/`Referer` 仍不校验（见局限） |
+| 3 | **GET 放大**：30×4MB 历史 | 中 | 单请求 223ms 同步解析 ~120MB；20 并发墙钟 4.2s 全串行 | ✅ 修：解析预算（0.5.3） |
+| 4 | **`contribute --id` 穿越写** | 高 | `--id ../../../poc-outside` 写出 `--repo` 外；`--force` 覆盖任意 `.md` | ✅ 修：`isSafeCaseId` + 落点必须在 `docs/cases` |
+| 5 | **`--html` 守卫绕过**：任何含 `<!doctype html` 的文件 | 中 | 用户自己的网页无 `--force` 被 17KB 报告覆盖 | ✅ 修：只认 `<meta name="generator" content="dsh-doctor">`（旧报告按标题兼容） |
+| 6 | **`kit --to` 无条件覆盖** | 中 | 预置 `急救.cmd`/`rescue.ps1`/`kit.json` 哨兵全被静默覆盖 | ✅ 修：非空目录默认拒绝（`dir-not-empty`），自己的 kit 仍幂等 |
+| 7 | **急救包 `kit.json.pluginRoot` 信任链 RCE** | 高（非目标） | 改一行 JSON → 菜单 1 执行攻击者 `bin/dsh-doctor.mjs`（marker 落盘） | ⬜ 非目标 + **文档化警告**：急救包目录必须自己控制 |
+| 8 | **`DSH_DOCTOR_NODE` 指向任意 `.cmd`** | 中（非目标） | 伪造 `.cmd` 通过版本探测后被当 Node 执行 | ⬜ 非目标（环境变量本人可控） |
+| 9 | **sessions/ junction 穿透** | 中 | 根外会话被解码并产生 `SESSION.REPETITION.COLLAPSE` | ✅ 修：realpath 白名单（0.5.3） |
+| 10 | **`DSH_HOME` 即写根** | 低 | 写到环境变量指定的任意目录 | ⬜ 设计假设，写进已知局限 |
+
+### 附带修掉的鲁棒性问题
+
+- `rescue.ps1` 在 stdin 到 EOF 后 `Read-Host` 返回空，主循环无限刷菜单（实测一次 23MB 输出）→ 空输入直接退出。
+
+### 防御确认（真跑了没攻破）
+
+`?run=` 九种穿越全 `bad-name`；POST 无头 403、连发 429；zstd 8MB+64KB 与声明 256MB 帧均 4ms 内拒；
+5×7MB 总量被拦；20 万层嵌套 JSON 22ms 解析不崩；`profiles/` 的 junction 被 `withFileTypes` 意外挡住
+（两处口径不一致，sessions 那条已补上 realpath）。
+
+> 这一轮的"输入与判断欺骗"视角（日志注毒 / 脱敏绕过 / 会话伪造）攻击者**失败无产出**，所以本节的
+> 结论只代表"边界、写路径、执行面"一侧；判断与输出的对抗以 0.5.2 那轮的 DeepSeek 双角色为准。
+
+---
+
 ## 2026-11-07 · 第二轮：Kimi 盲测 + 主控逐条复现（0.5.2 → 0.5.3）
 
 ### 这轮和上一轮的区别

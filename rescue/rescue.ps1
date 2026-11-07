@@ -589,6 +589,12 @@ function Show-Menu {
 while ($true) {
     Show-Menu
     $pick = Read-Host '请输入数字'
+    # 0.5.4：stdin 到 EOF（重定向 / 非交互 / 被管道调用）时 Read-Host 返回空，
+    # 原来的 switch 落到 default 后继续循环 → 无限刷菜单（实测一次 23MB 输出）。空输入即退出。
+    if ([string]::IsNullOrWhiteSpace($pick)) {
+        Write-Log 'stdin 已结束（非交互），退出'
+        break
+    }
     switch ($pick) {
         '1' { Invoke-Check; Wait-Enter }
         '2' { Start-WebHost; Wait-Enter }

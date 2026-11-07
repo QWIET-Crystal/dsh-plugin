@@ -1,5 +1,38 @@
 # Changelog
 
+## 0.5.4 — 2026-11-07
+
+第三轮红队：工具型攻击者（带 shell 的 DeepSeek 边界角色）在沙箱里跑出 10 条真攻破。
+其中 5 条本轮修掉；其余按威胁模型记为「已声明非目标」，但补进了文档。
+
+### 修复
+
+- **runs/ 硬链接 → 无鉴权 HTTP 任意读（高）**：`readRun` 只有"纯文件名"一道门，
+  `runs\loot.json` 硬链接到根外文件后，`GET ?run=loot` 直接返回根外内容
+  （硬链接是同一 inode 的第二个目录项，realpath 看不出来）。修：`realpathSync.native`
+  比对 runs 根 + `nlink > 1` 一律拒绝（`linked-file`）。
+- **`contribute --id` 路径穿越写（高）**：`--id ../../..` 把病例写出 `--repo` 之外，
+  `--force` 还能覆盖任意 `.md`。修：id 走 `isSafeCaseId`（与本地病例同一白名单），
+  落点必须在 `docs/cases` 里。
+- **`--html` 守卫名不副实（中）**：原判据是"文件里有没有 `<!doctype html`"——用户自己保存的
+  任何网页都会被静默覆盖。修：报告写入 `<meta name="generator" content="dsh-doctor">`，
+  守卫只认这个标记（旧版报告按标题兼容）。
+- **`kit --to` 无条件覆盖（中）**：会静默顶掉目标目录里的 `急救.cmd` / `rescue.ps1` / `kit.json`。
+  修：目标非空默认拒绝（`dir-not-empty`）；目录里已有我们导出的 `kit.json` 时仍幂等，或显式 `--force`。
+- **`rescue.ps1` stdin EOF 无限刷菜单（低）**：重定向/非交互下 `Read-Host` 返回空，主循环空转
+  （实测刷出 23MB 输出）。修：空输入直接退出。
+
+### 仍不防（已声明，本轮补进文档）
+
+- 急救包 `kit.json.pluginRoot` 未签名、`DSH_DOCTOR_NODE` 只验"文件存在"——同用户可改 = 非目标，
+  但链路一步即触发：**急救包目录必须放在用户自己控制的位置**。
+- `DSH_HOME` 环境变量即读写根（能控制进程环境 = 能控制写点）。
+- HTTP 不校验 `Origin`/`Referer`（`Host` 已限回环，rebinding 面已收窄；非浏览器本机进程本就不受 CORS 约束）。
+
+### 测试
+
+- 155 → **159 项 / 24 个文件**；新增 4 条回归（硬链接、contribute id、kit 非空、rescue EOF）。
+
 ## 0.5.3 — 2026-11-07
 
 第二轮红队（Kimi-K2.6 / GLM-5.3 盲测 + 主控逐条复现；上一轮 DeepSeek 双角色见 0.5.2）。

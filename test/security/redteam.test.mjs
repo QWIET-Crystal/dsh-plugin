@@ -6,7 +6,7 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { linkSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import os from 'node:os';
 import path from 'node:path';
@@ -112,11 +112,70 @@ test('--html 不覆盖非本工具生成的文件（第三条写路径）', asyn
         assert.equal(canOverwriteHtmlReport(victim, { force: true }).ok, true, '显式 --force 放行');
         const fresh = path.join(root, 'ok.html');
         assert.equal(canOverwriteHtmlReport(fresh).ok, true, '不存在的新文件直接写');
-        writeFileSync(fresh, '<!doctype html><html></html>', 'utf8');
-        assert.equal(canOverwriteHtmlReport(fresh).ok, true, '覆盖自己的报告放行');
+        // 0.5.4：用户自己的网页（也是 <!doctype html>）不能被当成"我们的报告"
+        const userPage = path.join(root, 'user-page.html');
+        writeFileSync(userPage, '<!DOCTYPE html><html><body>IMPORTANT USER DATA</body></html>', 'utf8');
+        assert.equal(canOverwriteHtmlReport(userPage).ok, false, '长得像 HTML ≠ 本工具报告');
+        const ours = path.join(root, 'ours.html');
+        writeFileSync(ours, '<!doctype html>\n<html><head><meta name="generator" content="dsh-doctor"><title>DSH 体检报告</title></head></html>', 'utf8');
+        assert.equal(canOverwriteHtmlReport(ours).ok, true, '带 generator 标记的本工具报告可覆盖');
+        const legacy = path.join(root, 'legacy.html');
+        writeFileSync(legacy, '<!doctype html><html><head><title>DSH 体检报告</title></head></html>', 'utf8');
+        assert.equal(canOverwriteHtmlReport(legacy).ok, true, '旧版报告（无 generator）按标题兼容');
     } finally {
         rmSync(root, { recursive: true, force: true });
     }
+});
+
+test('runs 读取：硬链接指向根外必须拒绝（0.5.4）', async () => {
+    const { readRun } = await import('../../lib/runs.js');
+    const root = mkdtempSync(path.join(os.tmpdir(), 'dsh-rt-link-'));
+    const outside = path.join(root, 'outside.json');
+    const runs = path.join(root, 'runs');
+    mkdirSync(runs, { recursive: true });
+    try {
+        writeFileSync(outside, JSON.stringify({ stolen: true }), 'utf8');
+        try {
+            linkSync(outside, path.join(runs, 'loot.json'));
+        } catch {
+            return; // 平台不支持硬链接就跳过
+        }
+        const hit = readRun(runs, 'loot');
+        assert.equal(hit.ok, false, '硬链接把根外文件变成了"目录里的第二个名字"');
+        assert.equal(hit.reason, 'linked-file');
+        const normal = path.join(runs, '2026-01-01T00-00-00-000Z-deadbeef.json');
+        writeFileSync(normal, JSON.stringify({ ok: 1 }), 'utf8');
+        assert.equal(readRun(runs, '2026-01-01T00-00-00-000Z-deadbeef.json').ok, true, '正常历史照常可读');
+    } finally {
+        rmSync(root, { recursive: true, force: true });
+    }
+});
+
+test('contribute --id 只接受安全字符（0.5.4）', async () => {
+    const { isSafeCaseId } = await import('../../lib/cases.js');
+    assert.equal(isSafeCaseId('2026-11-07-lab-case'), true);
+    assert.equal(isSafeCaseId('../../../poc-outside'), false);
+    assert.equal(isSafeCaseId('..\\..\\x'), false);
+    assert.equal(isSafeCaseId(''), false);
+});
+
+test('kit --to 目标非空要 --force（0.5.4）', async () => {
+    const { exportKit } = await import('../../lib/kit.js');
+    const dir = mkdtempSync(path.join(os.tmpdir(), 'dsh-rt-kit-'));
+    try {
+        writeFileSync(path.join(dir, '急救.cmd'), 'SENTINEL', 'utf8');
+        const r = exportKit(dir, { packageRoot: ROOT });
+        assert.equal(r.ok, false);
+        assert.equal(r.reason, 'dir-not-empty');
+        assert.equal(readFileSync(path.join(dir, '急救.cmd'), 'utf8'), 'SENTINEL', '哨兵文件不能被静默覆盖');
+    } finally {
+        rmSync(dir, { recursive: true, force: true });
+    }
+});
+
+test('rescue.ps1 在 stdin EOF 时退出，不无限刷菜单（0.5.4）', () => {
+    const src = readFileSync(path.join(ROOT, 'rescue', 'rescue.ps1'), 'utf8');
+    assert.ok(src.includes('IsNullOrWhiteSpace($pick)'), '空输入必须直接退出');
 });
 
 test('本地病例的命令带"未审核"标注（同名覆盖不再是隐形的）', async () => {    const { commandsForCase } = await import('../../lib/cases.js');

@@ -26,6 +26,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 
 import { localIdentity, redact, stripControl } from '../lib/safety.js';
+import { isSafeCaseId } from '../lib/cases.js';
 
 const ROOT_DEFAULT = path.join(import.meta.dirname, '..');
 
@@ -132,12 +133,22 @@ function main() {
     }
 
     const id = deriveId(args, source, raw);
+    // 0.5.4：id 必须是安全字符（它直接进文件名）。之前 `--id ../../x` 能写到 --repo 之外。
+    if (!isSafeCaseId(id)) {
+        json({ ok: false, reason: 'bad-id', hint: `病例编号只允许字母/数字/._-（1-80 字符），实际：${id}` });
+        return 2;
+    }
     const built = toCaseDoc(scrub(raw, localIdentity(), workspace), { id, title: args.title });
     if (!built.ok) {
         json({ ok: false, reason: built.reason, missing: built.missing, hint: '病例需要 症状 / 根因 / 处置 / 验证（判定签名可自动补空节）' });
         return 2;
     }
     const target = path.join(casesDir, `${id}.md`);
+    const relTarget = path.relative(casesDir, target);
+    if (relTarget.startsWith('..') || path.isAbsolute(relTarget)) {
+        json({ ok: false, reason: 'bad-id', hint: '病例落点必须在 docs/cases 里' });
+        return 2;
+    }
     if (existsSync(target) && !args.force) {
         json({ ok: false, reason: `已存在同名病例（加 --force 覆盖）: ${path.relative(repo, target)}` });
         return 2;
