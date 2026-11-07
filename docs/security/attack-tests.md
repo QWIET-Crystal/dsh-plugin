@@ -5,11 +5,12 @@
 
 ---
 
-## 2026-11-07 · 第二轮：Kimi / GLM 盲测 + 主控逐条复现（0.5.2 → 0.5.3）
+## 2026-11-07 · 第二轮：Kimi 盲测 + 主控逐条复现（0.5.2 → 0.5.3）
 
 ### 这轮和上一轮的区别
 
-- SiliconFlow 余额不足（HTTP 402），改走**各自官方 API 直连**：Moonshot `kimi-k2.6`、Z.ai `glm-5.3`。
+- SiliconFlow 余额不足（HTTP 402），改走**各自官方 API 直连**：Moonshot `kimi-k2.6`（`thinking: disabled`）。
+- **GLM 分支没拿到结果**：Z.ai `glm-5.3` 三次调用都把输出预算烧在推理通道（如 `reasoning_tokens: 13994 / 14000`，`content` 空），换 `glm-5.3-flash` 仍超时——本轮 GLM 不计分，如实记在这里。
 - 只给源码（`lib/*.js` + `bin` + `rescue.ps1`），**不给 SECURITY.md**（盲测）。
 - 它们只有文本通道，所以是**它们出攻击、主控在沙箱里原样执行**（方案里的降级路径）。
 - 沙箱重建在 0.5.2 代码上：`_securitylab/run-20261107b`（假 HOME / 假 APPDATA / 独立实例 `:3999` / 审计包装器）。
