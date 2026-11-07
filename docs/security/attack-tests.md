@@ -160,3 +160,39 @@ ReDoS 时长、裸 marker 不再擦故障、返回值无令牌、结论数量上
 - 每次改动 `lib/sessions.js`、`lib/report.js`、`lib/http.js`、`lib/repairs.js` 或 `rescue/rescue.ps1` 后重跑：
   `node tools/attack-probe.mjs` + `node test/security/`
 - 多模型轮用 `node tools/security-lab.mjs` 搭沙箱，再按 `README.md` 里的交战规则派人。
+
+---
+
+## 第 3–5 轮（2026-11-07 · 收敛）
+
+三轮共 **约 60 条真跑尝试**，按"严重/高危清零"口径收敛。
+
+| 轮次 | 面 | 严重 | 高 | 中 | 已修 |
+| --- | --- | --- | --- | --- | --- |
+| 3 | CLI 参数 × 环境变量 | 1（contribute --id 穿越） | 3 | 9 | 10 |
+| 4 | HTTP 协议 × 会话解析 | 1（空帧风暴） | 3 | 8 | 9 |
+| 5 | 对 0.5.6 的修复验证 | 0 | 0 | 1（id 消毒碰撞） | 1 |
+
+### 第 4 轮最重的三条（都已复现并修）
+
+1. **空帧风暴**：1MB 连续 zstd magic = 262144 次解压 → 冻结 11s、RSS 1.3GB、deep 下 OOM。
+   修：单文件 5000 帧 / 整轮 20000 帧上限，预算按**尝试次数**记。
+2. **整份丢弃 = 帮攻击者删证据**：一帧超 8MB 会让整个会话被放弃且不出 unknown。
+   修：保留已解出的帧 + `truncatedByFrame` → unknown。
+3. **`?run=` 任意 .json**：runs 根被 junction 换掉时能读出别人的 settings.json（含令牌）。
+   修：只服务本工具写的文件名。
+
+### 第 5 轮验证了什么
+
+- 6000 空帧 / 10×4000 空帧：均在 2 秒内截断，`truncated` 置位；
+- 超限帧：空回合证据**保留**，同时出 unknown；
+- 硬链接会话文件：`linked-file` 拒绝；
+- `?run=` 非历史文件：全部 bad-name；
+- Host：`127.0.0.1` / `localhost` / `[::1]` 放行，`[::1]evil` / 逗号列表 / 伪造域名拒绝；
+  （`127.1` 与 `[0:0:0:0:0:0:0:1]` 返回 200 是**正确**的——URL 规范化成回环。）
+- 发现并修复：id 消毒碰撞（`a b` 与 `a_b` 撞成同一个 id）。
+
+### 仍然是"非目标"的
+
+同用户本地篡改（改 kit.json / 伪造 runs / 改环境变量）、杀毒、多用户隔离。
+威胁模型见 [SECURITY.md](../../SECURITY.md)。

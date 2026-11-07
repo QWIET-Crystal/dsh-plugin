@@ -145,3 +145,19 @@ test('会话 id 里的指令字符被消毒（不再原样进结论正文）', (
         rmSync(root, { recursive: true, force: true });
     }
 });
+
+test('会话 id 消毒不碰撞（a b / a_b 必须可区分，否则结论串味）', () => {
+    const root = tmp('idcollide');
+    try {
+        for (const name of ['a b', 'a_b']) {
+            const dir = path.join(root, 'p', name);
+            mkdirSync(dir, { recursive: true });
+            writeFileSync(path.join(dir, 'session.v4.jsonl.zstd'), zlib.zstdCompressSync(Buffer.from('{"type":"session"}\n')));
+        }
+        const scan = scanSessions({ dir: root, env: {}, deep: true });
+        const ids = scan.scanned.map((s) => s.sessionId);
+        assert.equal(new Set(ids).size, ids.length, `id 撞了：${JSON.stringify(ids)}`);
+    } finally {
+        rmSync(root, { recursive: true, force: true });
+    }
+});
