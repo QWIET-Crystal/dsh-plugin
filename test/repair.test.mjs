@@ -95,7 +95,7 @@ test('runCheck：上一轮 warn + 这一轮 ok → 附带 repair 与模板，并
         // 上一轮：一条 warn
         saveRun(runsDir, prevRun('warn', [{ id: 'ABI.BUNDLE.MISSING', level: 'warn', area: 'ABI', text: '缺包' }]), { retention: 30, throttleMs: 0 });
 
-        const payload = await runCheck({ discovery: healthyDiscovery(profileDir), deep: false, saveRuns: true, runsDir, retention: 30, throttleMs: 0 });
+        const payload = await runCheck({ discovery: healthyDiscovery(profileDir), deep: false, saveRuns: true, runsDir, retention: 30, throttleMs: 0, sessionScan: false });
         assert.equal(payload.verdict, 'ok', '这一轮应该是全绿');
         assert.equal(payload.repair.detected, true);
         assert.equal(payload.repair.previousVerdict, 'warn');
@@ -119,7 +119,7 @@ test('runCheck：没有历史时不触发提醒', async () => {
         const profileDir = path.join(root, 'profile');
         mkdirSync(path.join(profileDir, 'profiles', 'p', 'node_modules', 'ok-plugin'), { recursive: true });
         writeFileSync(path.join(profileDir, 'profiles', 'p', 'node_modules', 'ok-plugin', 'package.json'), JSON.stringify({ name: 'ok-plugin', version: '1.0.0' }), 'utf8');
-        const payload = await runCheck({ discovery: healthyDiscovery(profileDir), deep: false, saveRuns: true, runsDir, retention: 30, throttleMs: 0 });
+        const payload = await runCheck({ discovery: healthyDiscovery(profileDir), deep: false, saveRuns: true, runsDir, retention: 30, throttleMs: 0, sessionScan: false });
         assert.equal(payload.repair.detected, false);
         assert.equal(payload.findings.some((f) => f.id === IDS.CASE_CONTRIBUTE_SUGGESTED), false);
     } finally {

@@ -136,11 +136,11 @@ test('runs 读取：硬链接指向根外必须拒绝（0.5.4）', async () => {
     try {
         writeFileSync(outside, JSON.stringify({ stolen: true }), 'utf8');
         try {
-            linkSync(outside, path.join(runs, 'loot.json'));
+            linkSync(outside, path.join(runs, '2026-11-07T00-00-00-000Z-00aabbcc.json'));
         } catch {
             return; // 平台不支持硬链接就跳过
         }
-        const hit = readRun(runs, 'loot');
+        const hit = readRun(runs, '2026-11-07T00-00-00-000Z-00aabbcc');
         assert.equal(hit.ok, false, '硬链接把根外文件变成了"目录里的第二个名字"');
         assert.equal(hit.reason, 'linked-file');
         const normal = path.join(runs, '2026-01-01T00-00-00-000Z-deadbeef.json');

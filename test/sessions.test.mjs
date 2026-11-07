@@ -147,7 +147,9 @@ test('listSessionFiles：按时间倒序，sinceMs 过滤生效；读不到目�
         assert.equal(all.files.length, 2);
         const filtered = listSessionFiles(root, { sinceMs: Date.now() + 60_000 });
         assert.equal(filtered.files.length, 0);
-        assert.deepEqual(listSessionFiles(path.join(root, 'nope')), { files: [], error: 'ENOENT', escaped: 0 });
+        const missing = listSessionFiles(path.join(root, 'nope'));
+        assert.equal(missing.error, 'ENOENT');
+        assert.deepEqual(missing.files, []);
     } finally {
         rmSync(root, { recursive: true, force: true });
     }

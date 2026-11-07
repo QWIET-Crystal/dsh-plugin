@@ -30,7 +30,8 @@ const record = (id, pass, detail) => results.push({ id, pass, detail });
         const scan = scanSessions({ dir: root, env: {}, deep: false });
         const ms = Date.now() - t0;
         const grewMB = Math.round((process.memoryUsage().rss - before) / 1024 / 1024);
-        const blocked = scan.scanned.length === 0 && scan.errors.some((e) => /frame-too-large|too-large/.test(e));
+        // 新契约：不整份丢弃，而是标记 truncatedByFrame（上层转 unknown）
+        const blocked = (scan.truncatedByFrame === true || scan.scanned.length === 0) && scan.collapses.length === 0;
         record('解压炸弹（64MB/帧）', blocked && grewMB < 200, `scanned=${scan.scanned.length} errors=${JSON.stringify(scan.errors)} rss+${grewMB}MB ${ms}ms`);
     } finally {
         rmSync(root, { recursive: true, force: true });

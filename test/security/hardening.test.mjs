@@ -29,14 +29,16 @@ function sessionDirWithBomb() {
     return root;
 }
 
-test('解压炸弹：单帧超限整份放弃（记 unknown），不把内存打穿', () => {
+test('解压炸弹：单帧超限保留已解出的帧，标记 truncatedByFrame', () => {
     const root = sessionDirWithBomb();
     try {
         const before = process.memoryUsage().rss;
         const scan = scanSessions({ dir: root, env: {}, deep: false });
         const grewMB = (process.memoryUsage().rss - before) / 1024 / 1024;
-        assert.equal(scan.scanned.length, 0);
-        assert.ok(scan.errors.some((e) => e.includes('frame-too-large')), `错误应指明 frame-too-large：${scan.errors}`);
+        // 新契约：不整份丢弃（丢掉已解出的帧等于帮攻击者删证据），而是标记 truncatedByFrame，
+        // 由上层转成 unknown。
+        assert.equal(scan.truncatedByFrame, true, '超限帧必须被记下来');
+        assert.equal(scan.collapses.length, 0);
         assert.ok(grewMB < 200, `内存不应暴涨，实际 +${Math.round(grewMB)}MB`);
     } finally {
         rmSync(root, { recursive: true, force: true });
@@ -53,8 +55,8 @@ test('解压炸弹：上限是"分配前"的（maxOutputLength），不是解完
         const payload = Buffer.alloc(SESSION_LIMITS.maxFrameBytes + 1024, 0x61);
         writeFileSync(file, zlib.zstdCompressSync(payload, { level: 19 }));
         const r = readTailFrames(file, SESSION_LIMITS.tailBytes);
-        assert.equal(r.ok, false);
-        assert.equal(r.reason, 'frame-too-large');
+        assert.equal(r.truncatedByFrame, true, '单帧超限要在分配前被拦下并记下来');
+        assert.ok(r.badFrames >= 1);
     } finally {
         rmSync(root, { recursive: true, force: true });
     }
